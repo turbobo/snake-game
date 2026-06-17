@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>贪吃蛇大作战</title>
+<script src="https://cdn.jsdelivr.net/npm/goeasy@2.14.9/goeasy.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #0a0a1a; overflow: hidden;
+    width: 100vw; height: 100dvh;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: none; -webkit-user-select: none; user-select: none;
+  }
+  canvas { display: block; border-radius: 12px; }
+  .overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 10;
+    transition: opacity 0.35s ease, transform 0.35s ease;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; transform: scale(0.96); }
+
+  /* Menu */
+  #menu { background: radial-gradient(ellipse at 50% 40%, #1a1a3a 0%, #0a0a1a 70%); }
+  #menu h1 {
+    font-size: clamp(2.2rem, 8vw, 4.5rem); font-weight: 900;
+    background: linear-gradient(135deg, #00f5a0 0%, #00d9f5 50%, #a855f7 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    filter: drop-shadow(0 0 30px rgba(0,245,160,0.3)); margin-bottom: 0.3rem;
+    animation: title-pulse 3s ease-in-out infinite;
+  }
+  @keyframes title-pulse {
+    0%,100%{filter:drop-shadow(0 0 30px rgba(0,245,160,0.3))}50%{filter:drop-shadow(0 0 50px rgba(0,245,160,0.5))}
+  }
+  .subtitle { color: rgba(255,255,255,0.35); font-size: 0.82rem; margin-bottom: 1.5rem; letter-spacing: 0.2em; }
+  .feature-list {
+    display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+    margin-bottom: 1.5rem; max-width: 360px;
+  }
+  .feature-tag {
+    padding: 4px 12px; border-radius: 14px; font-size: 0.72rem;
+    border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03);
+    color: rgba(255,255,255,0.45);
+  }
+  /* Mode toggle */
+  .mode-toggle { display: flex; gap: 0; margin-bottom: 1.5rem; border-radius: 22px; overflow: hidden; border: 1.5px solid rgba(255,255,255,0.12); }
+  .mode-btn {
+    padding: 9px 28px; background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.45);
+    font-family: inherit; font-size: 0.88rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s;
+  }
+  .mode-btn.active { background: linear-gradient(135deg, #00f5a0, #00d9f5); color: #0a0a1a; }
+  .speed-selector { display: flex; gap: 10px; margin-bottom: 1.5rem; }
+  .speed-btn {
+    padding: 6px 16px; border: 1.5px solid rgba(255,255,255,0.12); border-radius: 18px;
+    background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.45);
+    font-family: inherit; font-size: 0.78rem; cursor: pointer; transition: all 0.2s;
+  }
+  .speed-btn.active { border-color: #00f5a0; color: #00f5a0; background: rgba(0,245,160,0.08); }
+  .name-input {
+    padding: 9px 18px; border: 1.5px solid rgba(255,255,255,0.12); border-radius: 18px;
+    background: rgba(255,255,255,0.04); color: #fff; font-family: inherit; font-size: 0.88rem;
+    text-align: center; width: 160px; margin-bottom: 1.5rem; outline: none; transition: border-color 0.2s;
+  }
+  .name-input:focus { border-color: #00f5a0; }
+  .name-input::placeholder { color: rgba(255,255,255,0.2); }
+  .btn {
+    padding: 13px 46px; border: none; border-radius: 50px; cursor: pointer;
+    font-family: inherit; font-size: 1rem; font-weight: 700;
+    color: #0a0a1a; background: linear-gradient(135deg, #00f5a0, #00d9f5);
+    box-shadow: 0 0 25px rgba(0,245,160,0.25); transition: all 0.25s; position: relative; overflow: hidden;
+  }
+  .btn:hover { transform: translateY(-2px) scale(1.03); box-shadow: 0 0 40px rgba(0,245,160,0.45); }
+  .btn:active { transform: scale(0.97); }
+
+  /* Lobby */
+  #lobby { background: radial-gradient(ellipse at 50% 40%, #1a1a3a 0%, #0a0a1a 70%); }
+  .lobby-box {
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px; padding: 28px 32px; text-align: center; min-width: 300px;
+  }
+  .room-id {
+    font-size: 2.2rem; font-weight: 900; letter-spacing: 0.3em;
+    background: linear-gradient(135deg, #00f5a0, #00d9f5);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    margin: 8px 0 16px; cursor: pointer;
+  }
+  .room-label { color: rgba(255,255,255,0.3); font-size: 0.78rem; }
+  .player-list { list-style: none; margin: 16px 0; text-align: left; }
+  .player-list li {
+    padding: 8px 14px; margin: 4px 0; border-radius: 10px;
+    background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.7);
+    font-size: 0.88rem; display: flex; align-items: center; gap: 8px;
+  }
+  .player-list .host-badge {
+    font-size: 0.65rem; padding: 2px 8px; border-radius: 8px;
+    background: rgba(0,245,160,0.15); color: #00f5a0; margin-left: auto;
+  }
+  .player-list .dot { width: 8px; height: 8px; border-radius: 50%; background: #00f5a0; }
+  .lobby-actions { display: flex; gap: 10px; justify-content: center; margin-top: 16px; }
+  .btn-sm {
+    padding: 8px 24px; border-radius: 20px; font-family: inherit; font-size: 0.82rem;
+    font-weight: 600; cursor: pointer; transition: all 0.2s; border: none;
+  }
+  .btn-primary { background: linear-gradient(135deg, #00f5a0, #00d9f5); color: #0a0a1a; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-ghost { border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.6); }
+  .btn-ghost:hover { border-color: rgba(255,255,255,0.3); }
+  .join-row { display: flex; gap: 8px; margin-top: 12px; }
+  .join-input {
+    flex: 1; padding: 9px 14px; border: 1.5px solid rgba(255,255,255,0.12); border-radius: 14px;
+    background: rgba(255,255,255,0.04); color: #fff; font-family: inherit; font-size: 0.9rem;
+    text-align: center; letter-spacing: 0.15em; text-transform: uppercase; outline: none;
+  }
+  .join-input:focus { border-color: #00f5a0; }
+  .error-msg { color: #ff4757; font-size: 0.78rem; margin-top: 8px; }
+  .waiting-text { color: rgba(255,255,255,0.35); font-size: 0.85rem; animation: pulse-wait 2s ease-in-out infinite; }
+  @keyframes pulse-wait { 0%,100%{opacity:0.35}50%{opacity:0.7} }
+  .score-target-row { display: flex; gap: 8px; align-items: center; justify-content: center; margin: 12px 0; }
+  .score-target-row label { color: rgba(255,255,255,0.4); font-size: 0.8rem; }
+  .score-target-row select {
+    padding: 5px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.06); color: #fff; font-family: inherit; font-size: 0.8rem;
+  }
+
+  /* HUD */
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 12px 18px; z-index: 5;
+    background: linear-gradient(to bottom, rgba(10,10,26,0.8), transparent);
+    pointer-events: none;
+  }
+  #hud.hidden { display: none; }
+  .hud-left { display: flex; flex-direction: column; gap: 3px; }
+  .hud-score {
+    font-size: 1.3rem; font-weight: 900;
+    background: linear-gradient(135deg, #00f5a0, #00d9f5);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .hud-best { font-size: 0.72rem; color: rgba(255,255,255,0.25); }
+  .hud-combo { font-size: 0.8rem; font-weight: 700; color: #ffd700; opacity: 0; transition: opacity 0.2s; }
+  .hud-combo.show { opacity: 1; }
+  .hud-buffs { display: flex; gap: 5px; margin-top: 2px; }
+  .buff-icon {
+    width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center;
+    font-size: 0.8rem; position: relative; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.05);
+  }
+  .buff-timer-bar { position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%); width: 18px; height: 2px; border-radius: 1px; background: rgba(255,255,255,0.1); }
+  .buff-timer-fill { height: 100%; border-radius: 1px; }
+  .hud-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  .hud-pause {
+    pointer-events: auto; width: 34px; height: 34px; border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04);
+    color: rgba(255,255,255,0.5); font-size: 1rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: all 0.2s;
+  }
+  .energy-bar-wrap { width: 90px; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.06); overflow: hidden; }
+  .energy-bar-fill { height: 100%; border-radius: 3px; transition: width 0.1s; background: linear-gradient(90deg, #00f5a0, #00d9f5); }
+  .energy-label { font-size: 0.6rem; color: rgba(255,255,255,0.25); }
+  /* Online scoreboard */
+  .scoreboard { margin-top: 6px; }
+  .sb-row { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; color: rgba(255,255,255,0.5); padding: 1px 0; }
+  .sb-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .sb-name { min-width: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sb-score { margin-left: auto; font-weight: 700; color: rgba(255,255,255,0.7); }
+  .sb-row.me { color: rgba(255,255,255,0.85); }
+
+  /* Game Over */
+  #gameover { background: rgba(10,10,26,0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+  #gameover h2 {
+    font-size: clamp(1.8rem, 6vw, 3rem); font-weight: 900;
+    color: #ff4757; margin-bottom: 0.3rem;
+    text-shadow: 0 0 40px rgba(255,71,87,0.4); animation: go-shake 0.6s ease-out;
+  }
+  @keyframes go-shake {
+    0%,100%{transform:translateX(0)}20%{transform:translateX(-10px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(3px)}
+  }
+  .final-score {
+    font-size: clamp(2.5rem, 10vw, 5rem); font-weight: 900;
+    background: linear-gradient(135deg, #00f5a0, #00d9f5);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    margin: 0.3rem 0 0.2rem;
+  }
+  .final-label { color: rgba(255,255,255,0.3); font-size: 0.78rem; }
+  .final-stats { display: flex; gap: 20px; margin: 10px 0; color: rgba(255,255,255,0.35); font-size: 0.78rem; }
+  .final-stats span { color: rgba(255,255,255,0.7); font-weight: 700; }
+  .new-record { color: #ffd700; font-size: 0.85rem; font-weight: 700; margin-bottom: 1.2rem; animation: record-glow 1s ease-in-out infinite alternate; }
+  @keyframes record-glow { from{text-shadow:0 0 10px rgba(255,215,0,0.3)}to{text-shadow:0 0 25px rgba(255,215,0,0.6)} }
+  .btn-restart {
+    padding: 11px 40px; border: 1.5px solid rgba(255,255,255,0.15); border-radius: 50px;
+    background: rgba(255,255,255,0.05); color: #fff;
+    font-family: inherit; font-size: 0.9rem; font-weight: 700; cursor: pointer; transition: all 0.25s;
+  }
+  .btn-restart:hover { border-color: #00f5a0; color: #00f5a0; background: rgba(0,245,160,0.06); }
+
+  /* Pause */
+  #pause-screen { background: rgba(10,10,26,0.85); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); }
+  #pause-screen h2 { font-size: 2rem; font-weight: 900; color: rgba(255,255,255,0.6); margin-bottom: 1.5rem; }
+
+  /* BG */
+  .bg-particles { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  .bg-particle { position: absolute; border-radius: 50%; opacity: 0.1; animation: float-up linear infinite; }
+  @keyframes float-up { 0%{transform:translateY(100vh) scale(0);opacity:0}10%{opacity:0.1}90%{opacity:0.1}100%{transform:translateY(-10vh) scale(1);opacity:0} }
+
+  /* Mobile */
+  #mobile-controls { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 6; display: none; }
+  @media (max-width: 768px) and (pointer: coarse) { #mobile-controls { display: grid; } }
+  #mobile-controls { grid-template-columns: 52px 52px 52px; grid-template-rows: 52px 52px; gap: 4px; }
+  .ctrl-btn {
+    width: 52px; height: 52px; border-radius: 11px;
+    border: 1.5px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05);
+    color: rgba(255,255,255,0.45); font-size: 1.2rem;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+  }
+  .ctrl-btn:active { background: rgba(0,245,160,0.12); border-color: #00f5a0; color: #00f5a0; }
+</style>
+</head>
+<body>
+<div class="bg-particles" id="bg-particles"></div>
+<canvas id="game-canvas"></canvas>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div class="hud-left">
+    <div class="hud-score" id="hud-score">0</div>
+    <div class="hud-best" id="hud-best">最高 0</div>
+    <div class="hud-combo" id="hud-combo">连击 x2</div>
+    <div class="hud-buffs" id="hud-buffs"></div>
+    <div class="scoreboard" id="scoreboard"></div>
+  </div>
+  <div class="hud-right">
+    <button class="hud-pause" id="hud-pause">⏸</button>
+    <div class="energy-label">⚡ 能量</div>
+    <div class="energy-bar-wrap"><div class="energy-bar-fill" id="energy-fill" style="width:100%"></div></div>
+    <div class="energy-label" id="speed-label">🏃 100%</div>
+  </div>
+</div>
+
+<!-- Menu -->
+<div class="overlay" id="menu">
+  <h1>贪吃蛇大作战</h1>
+  <div class="subtitle">经典重制 · 在线对战</div>
+  <div class="feature-list">
+    <div class="feature-tag">🛡️ 护盾</div><div class="feature-tag">⚡ 加速</div>
+    <div class="feature-tag">💎 双倍</div><div class="feature-tag">🧲 磁铁</div>
+    <div class="feature-tag">🤖 AI</div><div class="feature-tag">🔥 连击</div>
+    <div class="feature-tag">🏆 里程碑</div><div class="feature-tag">🌐 4人对战</div>
+  </div>
+  <div class="mode-toggle">
+    <button class="mode-btn active" data-mode="local">单人</button>
+    <button class="mode-btn" data-mode="online">在线</button>
+  </div>
+  <input class="name-input" id="name-input" type="text" placeholder="输入昵称" maxlength="6" value="">
+  <div class="speed-selector" id="speed-selector">
+    <button class="speed-btn" data-speed="slow">慢速</button>
+    <button class="speed-btn active" data-speed="normal">普通</button>
+    <button class="speed-btn" data-speed="fast">快速</button>
+  </div>
+  <button class="btn" id="btn-start">开始游戏</button>
+</div>
+
+<!-- Lobby -->
+<div class="overlay hidden" id="lobby">
+  <div class="lobby-box">
+    <div class="room-label">房间号</div>
+    <div class="room-id" id="lobby-room-id" title="点击复制">------</div>
+    <ul class="player-list" id="player-list"></ul>
+    <div class="score-target-row" id="score-target-row">
+      <label>目标分数</label>
+      <select id="score-target-select">
+        <option value="100">100</option>
+        <option value="200" selected>200</option>
+        <option value="500">500</option>
+        <option value="0">无限</option>
+      </select>
+    </div>
+    <div class="waiting-text" id="waiting-text">等待房主开始游戏...</div>
+    <div class="lobby-actions" id="lobby-actions"></div>
+    <div class="join-row" id="join-row" style="display:none">
+      <input class="join-input" id="join-input" type="text" placeholder="输入房间号" maxlength="6">
+      <button class="btn-sm btn-primary" id="btn-join-confirm">加入</button>
+    </div>
+    <div class="error-msg" id="lobby-error"></div>
+  </div>
+</div>
+
+<!-- Game Over -->
+<div class="overlay hidden" id="gameover">
+  <h2 id="gameover-title">游戏结束</h2>
+  <div class="final-label">得分</div>
+  <div class="final-score" id="final-score">0</div>
+  <div class="final-stats">
+    <div>长度 <span id="stat-length">3</span></div>
+    <div>击杀 <span id="stat-kills">0</span></div>
+    <div>最高连击 <span id="stat-combo">0</span></div>
+  </div>
+  <div class="new-record hidden" id="new-record">🏆 新纪录！</div>
+  <button class="btn-restart" id="btn-restart">再来一局</button>
+  <button class="btn-restart hidden" id="btn-back-lobby" style="margin-top:8px">返回大厅</button>
+</div>
+
+<!-- Pause -->
+<div class="overlay hidden" id="pause-screen">
+  <h2>暂停中</h2>
+  <button class="btn" id="btn-resume">继续</button>
+</div>
+
+<!-- Mobile -->
+<div id="mobile-controls">
+  <div></div><button class="ctrl-btn" data-dir="up">▲</button><div></div>
+  <button class="ctrl-btn" data-dir="left">◀</button><button class="ctrl-btn" data-dir="down">▼</button><button class="ctrl-btn" data-dir="right">▶</button>
+</div>
+
+<script>
+(() => {
+  // ===== Constants =====
+  const GRID = 24;
+  const SPEEDS = { slow: 150, normal: 110, fast: 70 };
+  const GOEASY_APPKEY = 'BC-849dcab428524333a394bbc19744e72b';
+  const POWERUP_TYPES = [
+    { id:'speed',  emoji:'⚡', color:'#ff4757', glow:'rgba(255,71,87,0.4)',  duration:5000, label:'加速' },
+    { id:'shield', emoji:'🛡️', color:'#a855f7', glow:'rgba(168,85,247,0.4)', duration:5000, label:'护盾' },
+    { id:'double', emoji:'💎', color:'#ffd700', glow:'rgba(255,215,0,0.4)',  duration:8000, label:'双倍' },
+    { id:'magnet', emoji:'🧲', color:'#00f5a0', glow:'rgba(0,245,160,0.4)',  duration:7000, label:'磁铁' },
+  ];
+  const SNAKE_COLORS = [
+    { body:'#00f5a0', head:'#00d9f5' },
+    { body:'#ff6b9d', head:'#ff9ec4' },
+    { body:'#c084fc', head:'#d8b4fe' },
+    { body:'#fbbf24', head:'#fde68a' },
+  ];
+  const AI_COLORS = ['#ff6b9d','#c084fc','#fbbf24','#34d399'];
+  const AI_NAMES = ['小红','小紫','小金','小翠'];
+
+  // ===== State =====
+  let canvas, ctx, W, H, cols, rows, cellSize;
+  let snakes = [];          // All snakes (player index 0, others are AI or online players)
+  let mySnakeIdx = 0;       // Which snake is "me"
+  let foods = [];
+  let powerups = [], activeBuffs = {};
+  let score = 0, best = 0, baseSpeed = SPEEDS.normal, speed;
+  let gameState = 'menu';   // menu | lobby | playing | dying | dead | paused
+  let moveTimer = 0, lastTime = 0, interpProgress = 0;
+  let particles = [], floatingTexts = [], shakeTimer = 0, shakeIntensity = 0;
+  let foodPulse = 0, trailPoints = [];
+  let combo = 0, comboTimer = 0, maxCombo = 0, kills = 0;
+  let lastMilestone = 0, foodEatCount = 0;
+  let energy = 100, boosting = false;
+  let mode = 'local';       // local | online
+  let playerName = '玩家';
+  let scoreTarget = 0;      // 0 = infinite
+
+  // Online state
+  let goeasy = null, channel = '', isHost = false, myClientId = '';
+  let onlinePlayers = [];   // [{id, name, colorIdx}]
+  let onlineState = null;   // Latest state from host
+  let broadcastTimer = 0;
+  const BROADCAST_INTERVAL = 66; // ~15Hz
+
+  // ===== Init =====
+  function init() {
+    canvas = document.getElementById('game-canvas');
+    ctx = canvas.getContext('2d');
+    best = parseInt(localStorage.getItem('snake-best3') || '0');
+    resize();
+    window.addEventListener('resize', resize);
+    createBgParticles();
+    setupInput();
+    requestAnimationFrame(loop);
+  }
+
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    const maxW = Math.min(window.innerWidth - 24, 700);
+    const maxH = Math.min(window.innerHeight - 24, 700);
+    const size = Math.min(maxW, maxH);
+    cellSize = Math.floor(size / GRID);
+    W = cellSize * GRID; H = cellSize * GRID;
+    cols = GRID; rows = GRID;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  // ===== Helpers =====
+  function getOccupied() {
+    const s = new Set();
+    snakes.forEach(sn => { if (!sn.dead) sn.body.forEach(b => s.add(`${b.x},${b.y}`)); });
+    foods.forEach(f => s.add(`${f.x},${f.y}`));
+    powerups.forEach(p => s.add(`${p.x},${p.y}`));
+    return s;
+  }
+  function randomFree(occ) {
+    if (!occ) occ = getOccupied();
+    let p, a = 0;
+    do { p = { x: Math.floor(Math.random()*cols), y: Math.floor(Math.random()*rows) }; a++; }
+    while (occ.has(`${p.x},${p.y}`) && a < 300);
+    return p;
+  }
+  function genRoomId() {
+    const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let r = ''; for (let i = 0; i < 6; i++) r += c[Math.floor(Math.random()*c.length)];
+    return r;
+  }
+
+  // ===== Game Logic (Host-authority: runs on host for online, locally for single) =====
+  function startLocalGame() {
+    snakes = []; foods = []; powerups = []; activeBuffs = {};
+    particles = []; floatingTexts = []; trailPoints = [];
+    score = 0; combo = 0; comboTimer = 0; maxCombo = 0; kills = 0;
+    lastMilestone = 0; foodEatCount = 0; energy = 100; boosting = false;
+    moveTimer = 0; interpProgress = 0; speed = baseSpeed;
+
+    const cx = Math.floor(cols/2), cy = Math.floor(rows/2);
+    snakes.push(makeSnake(playerName, cx, cy, 1, 0, SNAKE_COLORS[0]));
+
+    // AI opponents
+    for (let i = 0; i < 2; i++) {
+      const ax = 3 + Math.floor(Math.random()*(cols-6));
+      const ay = 3 + Math.floor(Math.random()*(rows-6));
+      snakes.push(makeSnake(AI_NAMES[i], ax, ay, Math.random()>0.5?1:-1, 0, {body:AI_COLORS[i],head:AI_COLORS[i]}));
+      snakes[snakes.length-1].isAI = true;
+    }
+
+    spawnFood();
+    gameState = 'playing';
+    showScreen('hud');
+    updateHUD();
+  }
+
+  function startOnlineGame(players) {
+    snakes = []; foods = []; powerups = []; activeBuffs = {};
+    particles = []; floatingTexts = []; trailPoints = [];
+    score = 0; combo = 0; comboTimer = 0; maxCombo = 0; kills = 0;
+    lastMilestone = 0; foodEatCount = 0; energy = 100; boosting = false;
+    moveTimer = 0; interpProgress = 0; speed = baseSpeed;
+
+    // Place each player snake at different positions
+    const positions = [
+      { x: 4, y: 4 }, { x: cols-5, y: 4 },
+      { x: 4, y: rows-5 }, { x: cols-5, y: rows-5 }
+    ];
+    for (let i = 0; i < players.length; i++) {
+      const pos = positions[i];
+      const dx = (i < 2) ? 1 : -1;
+      snakes.push(makeSnake(players[i].name, pos.x, pos.y, dx, 0, SNAKE_COLORS[i]));
+      snakes[i].playerId = players[i].id;
+    }
+    mySnakeIdx = snakes.findIndex(s => s.playerId === myClientId);
+    if (mySnakeIdx < 0) mySnakeIdx = 0;
+
+    spawnFood();
+    gameState = 'playing';
+    showScreen('hud');
+    updateHUD();
+  }
+
+  function makeSnake(name, x, y, dx, dy, colors) {
+    return {
+      name, body: [{x,y},{x:x-dx,y},{x:x-dx*2,y}],
+      dir:{x:dx,y:dy}, nextDir:{x:dx,y:dy},
+      bodyColor: colors.body, headColor: colors.head,
+      score: 0, alive: true, dead: false,
+      respawnTimer: 0, isAI: false, playerId: null,
+      moveTimer: 0,
+    };
+  }
+
+  function spawnFood() {
+    foods.push({ ...randomFree() });
+  }
+  function spawnPowerup() {
+    if (powerups.length >= 3) return;
+    const t = POWERUP_TYPES[Math.floor(Math.random()*POWERUP_TYPES.length)];
+    powerups.push({ ...randomFree(), type: t, spawnTime: Date.now(), lifetime: 12000 });
+  }
+
+  // Host tick for a single snake
+  function tickSnake(sn, idx) {
+    if (sn.dead) {
+      sn.respawnTimer -= 1;
+      if (sn.respawnTimer <= 0) respawnSnake(sn, idx);
+      return;
+    }
+    sn.dir = { ...sn.nextDir };
+    const h = sn.body[0];
+    const nx = h.x + sn.dir.x, ny = h.y + sn.dir.y;
+    const myBuffs = (idx === mySnakeIdx && mode === 'local') ? activeBuffs : {};
+    const hasShield = !!myBuffs.shield;
+
+    // Wall collision
+    if (nx < 0 || nx >= cols || ny < 0 || ny >= rows) {
+      if (hasShield) {
+        sn.body.unshift({ x: (nx+cols)%cols, y: (ny+rows)%rows });
+        postSnakeMove(sn, idx, (nx+cols)%cols, (ny+rows)%rows);
+        return;
+      }
+      return killSnake(sn, idx);
+    }
+    // Self collision
+    for (const seg of sn.body) {
+      if (seg.x === nx && seg.y === ny) return killSnake(sn, idx);
+    }
+    // Other snake collision
+    for (let j = 0; j < snakes.length; j++) {
+      if (j === idx || snakes[j].dead) continue;
+      for (const seg of snakes[j].body) {
+        if (seg.x === nx && seg.y === ny) {
+          if (hasShield) { killSnake(snakes[j], j); }
+          else return killSnake(sn, idx);
+        }
+      }
+    }
+    sn.body.unshift({ x: nx, y: ny });
+    postSnakeMove(sn, idx, nx, ny);
+  }
+
+  function postSnakeMove(sn, idx, nx, ny) {
+    let ate = false;
+    const isMe = (idx === mySnakeIdx);
+    const myBuffs = isMe ? activeBuffs : {};
+
+    // Eat food
+    for (let fi = foods.length - 1; fi >= 0; fi--) {
+      if (nx === foods[fi].x && ny === foods[fi].y) {
+        ate = true;
+        let pts = 10;
+        if (isMe && myBuffs.double) pts *= 2;
+        if (isMe) {
+          combo++; comboTimer = 2;
+          if (combo > maxCombo) maxCombo = combo;
+          if (combo >= 3) { pts = Math.floor(pts * (1 + Math.min(combo,8)*0.2)); addFloatingText(nx,ny,`连击 x${combo}!`,'#ffd700',1.2); }
+          score += pts; foodEatCount++;
+          addFloatingText(nx, ny-0.5, `+${pts}`, pts>10?'#ffd700':'#00f5a0');
+          checkMilestones();
+        }
+        sn.score += 10;
+        spawnEatParticles(nx, ny, '#ff6b6b');
+        foods.splice(fi, 1);
+        spawnFood();
+        if (isMe && foodEatCount % 4 === 0) spawnPowerup();
+        break;
+      }
+    }
+
+    // Eat powerup (only player)
+    if (isMe) {
+      for (let i = powerups.length - 1; i >= 0; i--) {
+        const p = powerups[i];
+        if (nx === p.x && ny === p.y) {
+          ate = true;
+          activateBuff(p.type);
+          spawnEatParticles(nx, ny, p.type.color);
+          addFloatingText(nx, ny, `${p.type.emoji} ${p.type.label}!`, p.type.color, 1.5);
+          powerups.splice(i, 1);
+        }
+      }
+    }
+
+    // Magnet (only player)
+    if (isMe && myBuffs.magnet && foods.length > 0) {
+      const f = foods[0];
+      const dx = nx - f.x, dy = ny - f.y;
+      if (Math.abs(dx)+Math.abs(dy) <= 6 && Math.abs(dx)+Math.abs(dy) > 0) {
+        const mx = dx !== 0 ? Math.sign(dx) : 0;
+        const my = dy !== 0 ? Math.sign(dy) : 0;
+        const nfx = f.x+mx, nfy = f.y+my;
+        if (!getOccupied().has(`${nfx},${nfy}`)) { f.x = nfx; f.y = nfy; }
+      }
+    }
+
+    if (!ate) {
+      const tail = sn.body.pop();
+      if (isMe) trailPoints.push({ x:tail.x, y:tail.y, life:1, color: myBuffs.shield?'#a855f7': myBuffs.speed?'#ff4757':'#00f5a0' });
+    }
+  }
+
+  function killSnake(sn, idx) {
+    if (sn.dead) return;
+    sn.dead = true; sn.alive = false; sn.respawnTimer = 20; // ~3 seconds at 6 ticks/s
+    const isMe = (idx === mySnakeIdx);
+
+    // Death particles
+    for (const seg of sn.body) {
+      for (let i = 0; i < 3; i++) {
+        particles.push({
+          x:(seg.x+0.5)*cellSize, y:(seg.y+0.5)*cellSize,
+          vx:(Math.random()-0.5)*300, vy:(Math.random()-0.5)*300,
+          life:1, decay:0.8+Math.random()*0.4, size:2+Math.random()*3, color:sn.bodyColor,
+        });
+      }
+    }
+
+    // Count kills for player
+    if (isMe) {
+      shakeTimer = 0.5; shakeIntensity = 14;
+      const isRecord = score > best;
+      if (isRecord) { best = score; localStorage.setItem('snake-best3', best); }
+      // Check if game over (online: score target)
+      if (mode === 'local') {
+        setTimeout(() => {
+          gameState = 'dead';
+          showGameOver(isRecord);
+        }, 900);
+      }
+    }
+    // If another snake killed our player, credit them
+    if (isMe && mode === 'online') {
+      addFloatingText(sn.body[0].x, sn.body[0].y, '💀 阵亡!', '#ff4757', 1.5);
+    }
+  }
+
+  function respawnSnake(sn, idx) {
+    const pos = randomFree();
+    const dx = Math.random() > 0.5 ? 1 : -1;
+    sn.body = [{x:pos.x,y:pos.y},{x:pos.x-dx,y:pos.y},{x:pos.x-dx*2,y:pos.y}];
+    sn.dir = {x:dx,y:0}; sn.nextDir = {x:dx,y:0};
+    sn.dead = false; sn.alive = true;
+  }
+
+  function checkMilestones() {
+    const ms = [50,100,200,350,500,800,1200];
+    for (const m of ms) {
+      if (score >= m && lastMilestone < m) {
+        lastMilestone = m;
+        addFloatingText(cols/2, rows/2, `🎉 ${m}分!`, '#ffd700', 2);
+        shakeTimer = 0.2; shakeIntensity = 6;
+        spawnPowerup(); spawnPowerup();
+      }
+    }
+  }
+
+  // AI logic
+  function tickAI(sn) {
+    if (sn.dead) return;
+    const head = sn.body[0];
+    let bestDir = { ...sn.dir };
+    if (foods.length > 0) {
+      const food = foods[0];
+      let bestDist = Infinity;
+      const dirs = [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
+      for (const d of dirs) {
+        if (d.x === -sn.dir.x && d.y === -sn.dir.y) continue;
+        const nx = head.x+d.x, ny = head.y+d.y;
+        if (nx<0||nx>=cols||ny<0||ny>=rows) continue;
+        let blocked = false;
+        for (const seg of sn.body) if (seg.x===nx&&seg.y===ny) { blocked=true; break; }
+        if (!blocked) for (const other of snakes) {
+          if (other===sn||other.dead) continue;
+          for (const seg of other.body) if (seg.x===nx&&seg.y===ny) { blocked=true; break; }
+          if (blocked) break;
+        }
+        if (blocked) continue;
+        const dist = Math.abs(nx-food.x)+Math.abs(ny-food.y);
+        if (dist < bestDist) { bestDist=dist; bestDir=d; }
+      }
+    }
+    sn.nextDir = bestDir;
+  }
+
+  // ===== Buffs (local player only) =====
+  function activateBuff(type) {
+    activeBuffs[type.id] = { endTime: Date.now()+type.duration, type };
+    if (type.id==='speed') speed = Math.max(baseSpeed*0.5, 40);
+    updateBuffHUD();
+  }
+  function updateBuffs() {
+    const now = Date.now(); let changed = false;
+    for (const id in activeBuffs) {
+      if (activeBuffs[id].endTime <= now) {
+        if (id==='speed') speed = baseSpeed;
+        delete activeBuffs[id]; changed = true;
+      }
+    }
+    if (changed) updateBuffHUD();
+    for (let i = powerups.length-1; i >= 0; i--) {
+      if (now - powerups[i].spawnTime > powerups[i].lifetime) powerups.splice(i,1);
+    }
+  }
+  function updateBuffHUD() {
+    const c = document.getElementById('hud-buffs'); c.innerHTML = '';
+    for (const id in activeBuffs) {
+      const b = activeBuffs[id];
+      const pct = Math.max(0,(b.endTime-Date.now())/b.type.duration*100);
+      const el = document.createElement('div'); el.className = 'buff-icon';
+      el.style.borderColor = b.type.color+'55';
+      el.innerHTML = `${b.type.emoji}<div class="buff-timer-bar"><div class="buff-timer-fill" style="width:${pct}%;background:${b.type.color}"></div></div>`;
+      c.appendChild(el);
+    }
+  }
+
+  // ===== Particles =====
+  function spawnEatParticles(gx,gy,color) {
+    const cx=(gx+0.5)*cellSize, cy=(gy+0.5)*cellSize;
+    for (let i=0;i<12;i++) {
+      const a=(Math.PI*2*i)/12+Math.random()*0.3, s=60+Math.random()*100;
+      particles.push({x:cx,y:cy,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,decay:1.1+Math.random()*0.5,size:2+Math.random()*3,color:color||'#ffd700'});
+    }
+  }
+  function addFloatingText(gx,gy,text,color,sc) {
+    floatingTexts.push({x:(gx+0.5)*cellSize,y:(gy+0.5)*cellSize,text,color,scale:sc||1,life:1,vy:-35});
+  }
+  function updateParticles(dt) {
+    for (let i=particles.length-1;i>=0;i--) {
+      const p=particles[i]; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=(1-2.5*dt); p.vy*=(1-2.5*dt); p.life-=p.decay*dt;
+      if (p.life<=0) particles.splice(i,1);
+    }
+    for (let i=trailPoints.length-1;i>=0;i--) { trailPoints[i].life-=dt*3; if (trailPoints[i].life<=0) trailPoints.splice(i,1); }
+    for (let i=floatingTexts.length-1;i>=0;i--) { floatingTexts[i].y+=floatingTexts[i].vy*dt; floatingTexts[i].life-=dt*0.8; if (floatingTexts[i].life<=0) floatingTexts.splice(i,1); }
+  }
+
+  // ===== Rendering =====
+  function draw() {
+    ctx.save();
+    if (shakeTimer>0) ctx.translate((Math.random()-0.5)*shakeIntensity*shakeTimer,(Math.random()-0.5)*shakeIntensity*shakeTimer);
+    ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,W,H);
+
+    // Grid
+    ctx.strokeStyle='rgba(255,255,255,0.025)'; ctx.lineWidth=0.5;
+    for (let x=0;x<=cols;x++){ctx.beginPath();ctx.moveTo(x*cellSize,0);ctx.lineTo(x*cellSize,H);ctx.stroke();}
+    for (let y=0;y<=rows;y++){ctx.beginPath();ctx.moveTo(0,y*cellSize);ctx.lineTo(W,y*cellSize);ctx.stroke();}
+
+    // Trail
+    for (const t of trailPoints) {
+      ctx.beginPath(); ctx.arc((t.x+0.5)*cellSize,(t.y+0.5)*cellSize,cellSize*0.16*t.life,0,Math.PI*2);
+      ctx.globalAlpha=0.1*t.life; ctx.fillStyle=t.color||'#00f5a0'; ctx.fill();
+    }
+    ctx.globalAlpha=1;
+
+    // Powerups
+    foodPulse+=0.05;
+    for (const p of powerups) drawFoodItem(p.x,p.y,p.type.color,p.type.glow,p.type.emoji);
+
+    // Food
+    for (const f of foods) drawFoodItem(f.x,f.y,'#ff6b6b','rgba(255,107,107,0.4)',null);
+
+    // Snakes
+    for (let i=0;i<snakes.length;i++) {
+      const sn = snakes[i];
+      if (sn.dead) continue;
+      const isMe = (i === mySnakeIdx);
+      const myBuffs = isMe ? activeBuffs : {};
+      const shielded = !!myBuffs.shield;
+      const spd = !!myBuffs.speed;
+      const bc = shielded ? '#a855f7' : spd ? '#ff4757' : sn.bodyColor;
+      const hc = shielded ? '#c084fc' : spd ? '#ff6b6b' : sn.headColor;
+      const interp = (isMe && gameState==='playing') ? interpProgress : 1;
+      drawSnakeBody(sn, bc, hc, interp, isMe, shielded);
+    }
+
+    // Particles
+    for (const p of particles) {
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.size*p.life,0,Math.PI*2);
+      ctx.globalAlpha=p.life; ctx.fillStyle=p.color; ctx.fill();
+    }
+    ctx.globalAlpha=1;
+
+    // Floating texts
+    for (const ft of floatingTexts) {
+      ctx.globalAlpha=ft.life;
+      ctx.font=`bold ${Math.round(13*ft.scale)}px -apple-system,sans-serif`;
+      ctx.textAlign='center'; ctx.fillStyle=ft.color;
+      ctx.shadowColor=ft.color; ctx.shadowBlur=8;
+      ctx.fillText(ft.text, ft.x, ft.y);
+      ctx.shadowBlur=0;
+    }
+    ctx.globalAlpha=1;
+    ctx.restore();
+  }
+
+  function drawFoodItem(gx,gy,color,glow,emoji) {
+    const fx=(gx+0.5)*cellSize, fy=(gy+0.5)*cellSize;
+    const pulse=1+Math.sin(foodPulse)*0.12, r=cellSize*0.3*pulse;
+    const grd=ctx.createRadialGradient(fx,fy,r*0.3,fx,fy,r*2.5);
+    grd.addColorStop(0,glow); grd.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=grd; ctx.fillRect(fx-r*2.5,fy-r*2.5,r*5,r*5);
+    if (emoji) {
+      ctx.font=`${Math.round(cellSize*0.65)}px -apple-system,sans-serif`;
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(emoji,fx,fy+1); ctx.textBaseline='alphabetic';
+    } else {
+      ctx.beginPath(); ctx.arc(fx,fy,r,0,Math.PI*2);
+      const fg=ctx.createRadialGradient(fx-r*0.3,fy-r*0.3,r*0.1,fx,fy,r);
+      fg.addColorStop(0,'#ff9a9e'); fg.addColorStop(1,color);
+      ctx.fillStyle=fg; ctx.fill();
+      ctx.beginPath(); ctx.arc(fx-r*0.25,fy-r*0.25,r*0.16,0,Math.PI*2);
+      ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.fill();
+    }
+  }
+
+  function drawSnakeBody(sn, bodyColor, headColor, interp, isPlayer, shielded) {
+    const body = sn.body, d = sn.dir, radius = cellSize*0.3;
+    for (let i=body.length-1;i>=0;i--) {
+      const seg=body[i]; let cx,cy;
+      if (isPlayer && gameState==='playing' && interp<1) {
+        if (i===0) { cx=(seg.x-d.x+d.x*interp+0.5)*cellSize; cy=(seg.y-d.y+d.y*interp+0.5)*cellSize; }
+        else { const prev=body[i-1]||seg; cx=(seg.x+(prev.x-seg.x)*(1-interp)+0.5)*cellSize; cy=(seg.y+(prev.y-seg.y)*(1-interp)+0.5)*cellSize; }
+      } else { cx=(seg.x+0.5)*cellSize; cy=(seg.y+0.5)*cellSize; }
+      const t=i/Math.max(body.length-1,1), isHead=i===0;
+      ctx.shadowColor=isHead?headColor:bodyColor; ctx.shadowBlur=isHead?16:5;
+      ctx.beginPath(); roundRect(ctx,cx-radius,cy-radius,radius*2,radius*2,radius*0.55);
+      if (isHead) { const g=ctx.createRadialGradient(cx,cy,0,cx,cy,radius*1.5); g.addColorStop(0,headColor); g.addColorStop(1,bodyColor); ctx.fillStyle=g; }
+      else { ctx.globalAlpha=1-t*0.4; ctx.fillStyle=bodyColor; }
+      ctx.fill(); ctx.shadowBlur=0; ctx.globalAlpha=1;
+
+      if (isHead && shielded) {
+        ctx.beginPath(); ctx.arc(cx,cy,radius*1.8,0,Math.PI*2);
+        ctx.strokeStyle='rgba(168,85,247,0.3)'; ctx.lineWidth=2; ctx.setLineDash([4,4]); ctx.stroke(); ctx.setLineDash([]);
+      }
+      if (isHead) {
+        const eR=cellSize*0.065, eO=cellSize*0.13;
+        const ex1=cx+d.x*eO+d.y*eO*0.7,ey1=cy+d.y*eO-d.x*eO*0.7;
+        const ex2=cx+d.x*eO-d.y*eO*0.7,ey2=cy+d.y*eO+d.x*eO*0.7;
+        ctx.beginPath();ctx.arc(ex1,ey1,eR,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();
+        ctx.beginPath();ctx.arc(ex2,ey2,eR,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();
+        ctx.beginPath();ctx.arc(ex1+d.x*eR*0.4,ey1+d.y*eR*0.4,eR*0.4,0,Math.PI*2);ctx.fillStyle='#0a0a1a';ctx.fill();
+        ctx.beginPath();ctx.arc(ex2+d.x*eR*0.4,ey2+d.y*eR*0.4,eR*0.4,0,Math.PI*2);ctx.fillStyle='#0a0a1a';ctx.fill();
+
+        // Name label
+        if (sn.name) {
+          const ly = cy-radius-5;
+          ctx.font=`bold ${Math.round(cellSize*0.35)}px -apple-system,sans-serif`;
+          ctx.textAlign='center'; ctx.textBaseline='bottom';
+          const tw=ctx.measureText(sn.name).width;
+          ctx.fillStyle='rgba(0,0,0,0.45)';
+          roundRect(ctx,cx-tw/2-4,ly-cellSize*0.38,tw+8,cellSize*0.4,4); ctx.fill();
+          ctx.fillStyle=headColor; ctx.shadowColor=headColor; ctx.shadowBlur=5;
+          ctx.fillText(sn.name,cx,ly); ctx.shadowBlur=0; ctx.textBaseline='alphabetic';
+        }
+      }
+    }
+  }
+
+  function roundRect(ctx,x,y,w,h,r) {
+    r=Math.min(r,w/2,h/2); ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+  }
+
+  // ===== Main Loop =====
+  function loop(time) {
+    const dt = Math.min((time-lastTime)/1000, 0.05);
+    lastTime = time;
+
+    if (gameState === 'playing') {
+      if (mode === 'local' || isHost) {
+        // Host/local: run game logic
+        const me = snakes[mySnakeIdx];
+        if (me && !me.dead) {
+          const lenFactor = Math.min(2, 1 + (me.body.length-3)*0.03);
+          const lenSpeed = speed * lenFactor;
+          const effSpeed = boosting && energy > 0 ? lenSpeed*0.5 : lenSpeed;
+          if (boosting && energy > 0) energy = Math.max(0, energy-dt*35);
+          else energy = Math.min(100, energy+dt*15);
+
+          moveTimer += dt*1000;
+          interpProgress = Math.min(moveTimer/effSpeed, 1);
+          if (moveTimer >= effSpeed) {
+            moveTimer -= effSpeed; interpProgress = 0;
+            // Tick player snake
+            me.nextDir = pendingDir || me.nextDir; pendingDir = null;
+            tickSnake(me, mySnakeIdx);
+
+            // Tick AI (local mode only)
+            if (mode === 'local') {
+              for (let i = 0; i < snakes.length; i++) {
+                if (i === mySnakeIdx || !snakes[i].isAI) continue;
+                const ai = snakes[i];
+                ai.moveTimer += dt*1000;
+                const aiLenF = Math.min(2, 1+(ai.body.length-3)*0.03);
+                const aiEffS = baseSpeed * aiLenF;
+                if (ai.moveTimer >= aiEffS) { ai.moveTimer -= aiEffS; tickAI(ai); tickSnake(ai, i); }
+              }
+            } else {
+              // Online: tick remote player snakes (they sent their directions)
+              for (let i = 0; i < snakes.length; i++) {
+                if (i === mySnakeIdx) continue;
+                const sn = snakes[i];
+                if (sn.isAI) continue; // shouldn't happen in online
+                sn.moveTimer += dt*1000;
+                const aiLenF = Math.min(2, 1+(sn.body.length-3)*0.03);
+                const aiEffS = baseSpeed * aiLenF;
+                if (sn.moveTimer >= aiEffS) { sn.moveTimer -= aiEffS; tickSnake(sn, i); }
+              }
+            }
+          }
+
+          // Update buffs
+          if (mode === 'local' || isHost) updateBuffs();
+
+          // Combo decay
+          if (comboTimer > 0) { comboTimer -= dt; if (comboTimer <= 0) combo = 0; }
+          const ce = document.getElementById('hud-combo');
+          if (combo >= 2) { ce.textContent = `🔥 连击 x${combo}`; ce.classList.add('show'); }
+          else ce.classList.remove('show');
+
+          if (powerups.length < 2 && Math.random() < dt*0.08) spawnPowerup();
+
+          document.getElementById('energy-fill').style.width = energy+'%';
+          document.getElementById('speed-label').textContent = `🏃 ${Math.round(100/lenFactor)}%`;
+        }
+
+        // Broadcast state (online host)
+        if (mode === 'online' && isHost) {
+          broadcastTimer += dt*1000;
+          if (broadcastTimer >= BROADCAST_INTERVAL) {
+            broadcastTimer -= BROADCAST_INTERVAL;
+            broadcastGameState();
+          }
+        }
+
+        // Check online win condition
+        if (mode === 'online' && scoreTarget > 0) {
+          for (const sn of snakes) {
+            if (sn.score >= scoreTarget) {
+              gameState = 'dead';
+              showGameOver(sn.score >= score && sn !== snakes[mySnakeIdx] ? false : score > best);
+              broadcastGameOver();
+              break;
+            }
+          }
+        }
+      } else {
+        // Client: predict own snake movement for responsiveness
+        const me = snakes[mySnakeIdx];
+        if (me && !me.dead) {
+          const lenFactor = Math.min(2, 1 + (me.body.length-3)*0.03);
+          const effSpeed = baseSpeed * lenFactor;
+          moveTimer += dt*1000;
+          interpProgress = Math.min(moveTimer/effSpeed, 1);
+          if (moveTimer >= effSpeed) {
+            moveTimer -= effSpeed; interpProgress = 0;
+            // Simple move: just extend head and pop tail (no eating/collision - host is authoritative)
+            const nx = me.body[0].x + me.nextDir.x;
+            const ny = me.body[0].y + me.nextDir.y;
+            if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+              me.dir = { ...me.nextDir };
+              me.body.unshift({ x: nx, y: ny });
+              me.body.pop();
+            }
+          }
+          // Energy
+          if (boosting && energy > 0) energy = Math.max(0, energy-dt*35);
+          else energy = Math.min(100, energy+dt*15);
+          document.getElementById('energy-fill').style.width = energy+'%';
+          document.getElementById('speed-label').textContent = `🏃 ${Math.round(100/lenFactor)}%`;
+        }
+      }
+    }
+
+    if (shakeTimer > 0) shakeTimer -= dt;
+    updateParticles(dt);
+    draw();
+    updateScoreboard();
+    requestAnimationFrame(loop);
+  }
+
+  // ===== Input =====
+  let pendingDir = null;
+
+  function setDirection(d) {
+    if (gameState !== 'playing') return;
+    const me = snakes[mySnakeIdx];
+    if (!me || me.dead) return;
+    const cur = me.dir;
+    if (d.x === -cur.x && d.y === -cur.y) return;
+    me.nextDir = d; // Immediate local update for responsiveness
+    pendingDir = d;
+
+    // Online: send to host
+    if (mode === 'online' && !isHost) {
+      publishMsg({ type: 'direction', dir: d });
+    }
+  }
+
+  function setupInput() {
+    window.addEventListener('keydown', e => {
+      if (gameState === 'playing') {
+        switch(e.key) {
+          case 'ArrowUp': case 'w': case 'W': setDirection({x:0,y:-1}); e.preventDefault(); break;
+          case 'ArrowDown': case 's': case 'S': setDirection({x:0,y:1}); e.preventDefault(); break;
+          case 'ArrowLeft': case 'a': case 'A': setDirection({x:-1,y:0}); e.preventDefault(); break;
+          case 'ArrowRight': case 'd': case 'D': setDirection({x:1,y:0}); e.preventDefault(); break;
+          case 'Shift': boosting=true; e.preventDefault(); break;
+          case ' ': if(mode==='local'){togglePause();} e.preventDefault(); break;
+        }
+      } else if (gameState==='paused' && e.key===' ') { togglePause(); e.preventDefault(); }
+    });
+    window.addEventListener('keyup', e => { if (e.key==='Shift') boosting=false; });
+
+    // Mode toggle
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        mode = btn.dataset.mode;
+        document.getElementById('speed-selector').style.display = mode==='online' ? 'none' : 'flex';
+      });
+    });
+
+    // Speed selector
+    document.querySelectorAll('.speed-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        baseSpeed = SPEEDS[btn.dataset.speed];
+      });
+    });
+    baseSpeed = SPEEDS.normal;
+
+    // Buttons
+    document.getElementById('btn-start').addEventListener('click', () => {
+      playerName = document.getElementById('name-input').value.trim() || '玩家';
+      if (mode === 'local') {
+        startLocalGame();
+      } else {
+        showLobby();
+      }
+    });
+    document.getElementById('btn-restart').addEventListener('click', () => {
+      if (mode === 'local') startLocalGame();
+      else if (isHost) { showLobby(); }
+    });
+    document.getElementById('btn-back-lobby').addEventListener('click', showLobby);
+    document.getElementById('btn-resume').addEventListener('click', togglePause);
+    document.getElementById('hud-pause').addEventListener('click', () => { if(mode==='local') togglePause(); });
+
+    // Mobile controls
+    document.querySelectorAll('.ctrl-btn').forEach(btn => {
+      btn.addEventListener('touchstart', e => {
+        e.preventDefault();
+        switch(btn.dataset.dir) {
+          case 'up': setDirection({x:0,y:-1}); break;
+          case 'down': setDirection({x:0,y:1}); break;
+          case 'left': setDirection({x:-1,y:0}); break;
+          case 'right': setDirection({x:1,y:0}); break;
+        }
+      });
+    });
+
+    // Touch swipe
+    let touchStart=null, lastTap=0;
+    canvas.addEventListener('touchstart', e => {
+      touchStart={x:e.touches[0].clientX,y:e.touches[0].clientY};
+      if (Date.now()-lastTap<300) boosting=true;
+      lastTap=Date.now();
+    });
+    canvas.addEventListener('touchend', e => {
+      boosting=false;
+      if (!touchStart||gameState!=='playing') return;
+      const dx=e.changedTouches[0].clientX-touchStart.x, dy=e.changedTouches[0].clientY-touchStart.y;
+      if (Math.max(Math.abs(dx),Math.abs(dy))<20) return;
+      if (Math.abs(dx)>Math.abs(dy)) setDirection({x:dx>0?1:-1,y:0});
+      else setDirection({x:0,y:dy>0?1:-1});
+      touchStart=null;
+    });
+  }
+
+  function togglePause() {
+    if (gameState==='playing') { gameState='paused'; showScreen('pause-screen'); }
+    else if (gameState==='paused') { gameState='playing'; showScreen('hud'); }
+  }
+
+  // ===== UI =====
+  function showScreen(id) {
+    ['menu','lobby','gameover','pause-screen'].forEach(s => document.getElementById(s).classList.toggle('hidden',s!==id));
+    document.getElementById('hud').classList.toggle('hidden',id!=='hud');
+    document.getElementById('hud-pause').style.display = mode==='online' ? 'none' : 'flex';
+  }
+
+  function showGameOver(isRecord) {
+    document.getElementById('final-score').textContent = score;
+    document.getElementById('stat-length').textContent = snakes[mySnakeIdx] ? snakes[mySnakeIdx].body.length : 0;
+    document.getElementById('stat-kills').textContent = kills;
+    document.getElementById('stat-combo').textContent = maxCombo;
+    const rec = document.getElementById('new-record');
+    if (isRecord && score > 0) rec.classList.remove('hidden'); else rec.classList.add('hidden');
+    document.getElementById('btn-back-lobby').classList.toggle('hidden', mode!=='online');
+    document.getElementById('gameover-title').textContent = mode==='online' ? '对局结束' : '游戏结束';
+    showScreen('gameover');
+  }
+
+  function updateHUD() {
+    document.getElementById('hud-score').textContent = score;
+    document.getElementById('hud-best').textContent = `最高 ${best}`;
+  }
+
+  function updateScoreboard() {
+    if (mode !== 'online' || snakes.length <= 1) { document.getElementById('scoreboard').innerHTML = ''; return; }
+    const sorted = snakes.map((s,i) => ({name:s.name, score:s.score, color:s.bodyColor, me:i===mySnakeIdx})).sort((a,b)=>b.score-a.score);
+    let html = '';
+    for (const s of sorted) {
+      html += `<div class="sb-row${s.me?' me':''}"><div class="sb-dot" style="background:${s.color}"></div><div class="sb-name">${s.name}</div><div class="sb-score">${s.score}</div></div>`;
+    }
+    document.getElementById('scoreboard').innerHTML = html;
+    // Update my score display
+    if (snakes[mySnakeIdx]) {
+      document.getElementById('hud-score').textContent = snakes[mySnakeIdx].score;
+    }
+  }
+
+  function createBgParticles() {
+    const c = document.getElementById('bg-particles');
+    const colors = ['#00f5a0','#00d9f5','#a855f7','#ff6b6b'];
+    for (let i=0;i<16;i++) {
+      const el=document.createElement('div'); el.className='bg-particle';
+      const sz=3+Math.random()*7;
+      el.style.cssText=`width:${sz}px;height:${sz}px;left:${Math.random()*100}%;background:${colors[Math.floor(Math.random()*colors.length)]};animation-duration:${8+Math.random()*12}s;animation-delay:${-Math.random()*15}s;`;
+      c.appendChild(el);
+    }
+  }
+
+  // ===== GoEasy Online =====
+  function formatGoEasyError(err) {
+    if (!err) return '未知错误';
+    if (typeof err === 'string') return err;
+    if (typeof err === 'object') {
+      if (err.content) return `[${err.code || '?'}] ${err.content}`;
+      if (err.message) return err.message;
+      try { return JSON.stringify(err); } catch { return String(err); }
+    }
+    return String(err);
+  }
+
+  function initGoEasy() {
+    return new Promise((resolve, reject) => {
+      if (goeasy) { resolve(); return; }
+      if (typeof GoEasy === 'undefined') { reject('GoEasy SDK 未加载'); return; }
+      goeasy = GoEasy.getInstance({
+        host: 'hangzhou.goeasy.io',
+        appkey: GOEASY_APPKEY,
+        modules: ['pubsub'],
+      });
+      resolve();
+    });
+  }
+
+  function connectGoEasy(name) {
+    return new Promise((resolve, reject) => {
+      myClientId = `${name}-${Math.random().toString(36).slice(2,8)}`;
+      goeasy.connect({
+        id: myClientId,
+        data: { name },
+        onSuccess: () => resolve(),
+        onFailed: (err) => {
+          console.error('[GoEasy] connect failed:', err);
+          reject(formatGoEasyError(err));
+        },
+      });
+    });
+  }
+
+  function subscribeChannel(ch) {
+    channel = ch;
+    return new Promise((resolve, reject) => {
+      goeasy.pubsub.subscribe({
+        channel: ch,
+        onMessage: (msg) => handleOnlineMessage(msg),
+        onSuccess: () => resolve(),
+        onFailed: (err) => {
+          console.error('[GoEasy] subscribe failed:', err);
+          reject(formatGoEasyError(err));
+        },
+      });
+    });
+  }
+
+  function publishMsg(msg) {
+    if (!goeasy || !channel) return;
+    msg.from = myClientId;
+    msg.timestamp = Date.now();
+    goeasy.pubsub.publish({
+      channel,
+      message: JSON.stringify(msg),
+      onSuccess: () => {},
+      onFailed: () => {},
+    });
+  }
+
+  function broadcast(msg) {
+    if (!goeasy || !channel) return;
+    msg.from = myClientId;
+    msg.timestamp = Date.now();
+    goeasy.pubsub.publish({
+      channel,
+      message: JSON.stringify(msg),
+      onSuccess: () => {},
+      onFailed: () => {},
+    });
+  }
+
+  async function showLobby() {
+    showScreen('lobby');
+    document.getElementById('lobby-error').textContent = '';
+    try {
+      await initGoEasy();
+      await connectGoEasy(playerName);
+      // Show create/join options
+      renderLobbyUI();
+    } catch (err) {
+      document.getElementById('lobby-error').textContent = '连接失败: ' + formatGoEasyError(err);
+    }
+  }
+
+  function renderLobbyUI() {
+    onlinePlayers = [{ id: myClientId, name: playerName, colorIdx: 0 }];
+    isHost = true;
+
+    const roomId = genRoomId();
+    document.getElementById('lobby-room-id').textContent = roomId;
+
+    // Click to copy
+    document.getElementById('lobby-room-id').onclick = () => {
+      navigator.clipboard.writeText(roomId).catch(()=>{});
+      document.getElementById('lobby-room-id').style.opacity = '0.5';
+      setTimeout(() => document.getElementById('lobby-room-id').style.opacity = '1', 500);
+    };
+
+    renderPlayerList();
+
+    document.getElementById('waiting-text').style.display = 'none';
+    document.getElementById('score-target-row').style.display = 'flex';
+    document.getElementById('join-row').style.display = 'none';
+
+    const actions = document.getElementById('lobby-actions');
+    actions.innerHTML = `
+      <button class="btn-sm btn-primary" id="btn-create-room">创建房间</button>
+      <button class="btn-sm btn-ghost" id="btn-show-join">加入房间</button>
+      <button class="btn-sm btn-ghost" id="btn-leave-lobby">返回</button>
+    `;
+
+    document.getElementById('btn-create-room').onclick = async () => {
+      try {
+        await subscribeChannel(`snake-${roomId}`);
+        actions.innerHTML = `
+          <button class="btn-sm btn-primary" id="btn-start-online">开始游戏</button>
+          <button class="btn-sm btn-ghost" id="btn-leave-room">离开房间</button>
+        `;
+        document.getElementById('join-row').style.display = 'none';
+        document.getElementById('waiting-text').style.display = 'block';
+        document.getElementById('waiting-text').textContent = '分享房间号给好友，等待加入...';
+        document.getElementById('btn-start-online').onclick = () => {
+          scoreTarget = parseInt(document.getElementById('score-target-select').value);
+          broadcast({ type: 'game-start', players: onlinePlayers, scoreTarget, baseSpeed });
+          startOnlineGame(onlinePlayers);
+        };
+        document.getElementById('btn-leave-room').onclick = leaveRoom;
+      } catch (err) {
+        document.getElementById('lobby-error').textContent = '创建房间失败';
+      }
+    };
+
+    document.getElementById('btn-show-join').onclick = () => {
+      document.getElementById('join-row').style.display = 'flex';
+      document.getElementById('join-input').value = '';
+      document.getElementById('join-input').focus();
+    };
+
+    document.getElementById('btn-join-confirm').onclick = async () => {
+      const rid = document.getElementById('join-input').value.trim().toUpperCase();
+      if (rid.length !== 6) { document.getElementById('lobby-error').textContent = '请输入6位房间号'; return; }
+      try {
+        isHost = false;
+        await subscribeChannel(`snake-${rid}`);
+        document.getElementById('lobby-room-id').textContent = rid;
+        actions.innerHTML = `<button class="btn-sm btn-ghost" id="btn-leave-room">离开房间</button>`;
+        document.getElementById('join-row').style.display = 'none';
+        document.getElementById('score-target-row').style.display = 'none';
+        document.getElementById('waiting-text').style.display = 'block';
+        document.getElementById('waiting-text').textContent = '等待房主开始游戏...';
+        document.getElementById('btn-leave-room').onclick = leaveRoom;
+        // Announce join
+        broadcast({ type: 'player-join', name: playerName, colorIdx: onlinePlayers.length });
+      } catch (err) {
+        document.getElementById('lobby-error').textContent = '加入失败';
+      }
+    };
+
+    document.getElementById('btn-leave-lobby').onclick = () => {
+      destroyGoEasy();
+      showScreen('menu');
+    };
+  }
+
+  function renderPlayerList() {
+    const ul = document.getElementById('player-list');
+    ul.innerHTML = '';
+    for (let i = 0; i < onlinePlayers.length; i++) {
+      const p = onlinePlayers[i];
+      const li = document.createElement('li');
+      li.innerHTML = `<div class="dot" style="background:${SNAKE_COLORS[i].body}"></div>${p.name}${p.id===onlinePlayers[0].id ? '<span class="host-badge">房主</span>' : ''}`;
+      ul.appendChild(li);
+    }
+  }
+
+  function handleOnlineMessage(msg) {
+    let data;
+    try { data = JSON.parse(msg.content); } catch { return; }
+    if (data.from === myClientId) return; // Ignore own messages
+
+    switch (data.type) {
+      case 'player-join': {
+        if (isHost && onlinePlayers.length < 4) {
+          onlinePlayers.push({ id: data.from, name: data.name, colorIdx: onlinePlayers.length });
+          renderPlayerList();
+          // Broadcast updated player list
+          broadcast({ type: 'room-info', players: onlinePlayers });
+        }
+        break;
+      }
+      case 'room-info': {
+        if (!isHost) {
+          onlinePlayers = data.players;
+          renderPlayerList();
+        }
+        break;
+      }
+      case 'direction': {
+        if (isHost) {
+          const sn = snakes.find(s => s.playerId === data.from);
+          if (sn && !sn.dead) {
+            const cur = sn.dir;
+            if (data.dir.x !== -cur.x || data.dir.y !== -cur.y) {
+              sn.nextDir = data.dir;
+            }
+          }
+        }
+        break;
+      }
+      case 'game-state': {
+        if (!isHost) {
+          applyRemoteState(data.state);
+        }
+        break;
+      }
+      case 'game-start': {
+        if (!isHost) {
+          onlinePlayers = data.players;
+          scoreTarget = data.scoreTarget;
+          baseSpeed = data.baseSpeed || SPEEDS.normal;
+          speed = baseSpeed;
+          startOnlineGame(onlinePlayers);
+        }
+        break;
+      }
+      case 'game-over': {
+        if (!isHost) {
+          gameState = 'dead';
+          showGameOver(false);
+        }
+        break;
+      }
+      case 'player-leave': {
+        if (isHost) {
+          onlinePlayers = onlinePlayers.filter(p => p.id !== data.from);
+          const sn = snakes.find(s => s.playerId === data.from);
+          if (sn) killSnake(sn, snakes.indexOf(sn));
+          renderPlayerList();
+        }
+        break;
+      }
+    }
+  }
+
+  function broadcastGameState() {
+    const state = {
+      snakes: snakes.map(s => ({
+        body: s.body, dir: s.dir, bodyColor: s.bodyColor, headColor: s.headColor,
+        name: s.name, score: s.score, dead: s.dead, playerId: s.playerId,
+      })),
+      foods,
+      powerups: powerups.map(p => ({ x:p.x, y:p.y, emoji:p.type.emoji, color:p.type.color, glow:p.type.glow })),
+      particles: particles.slice(0, 30).map(p => ({x:p.x,y:p.y,size:p.size,life:p.life,color:p.color})),
+      floatingTexts: floatingTexts.slice(0, 10),
+    };
+    broadcast({ type: 'game-state', state });
+  }
+
+  function broadcastGameOver() {
+    broadcast({ type: 'game-over', scores: snakes.map(s => ({name:s.name, score:s.score})) });
+  }
+
+  function applyRemoteState(state) {
+    // Update snakes
+    snakes = state.snakes.map(s => ({
+      ...s, nextDir: s.dir, isAI: false, alive: !s.dead, respawnTimer: 0, moveTimer: 0,
+    }));
+    mySnakeIdx = snakes.findIndex(s => s.playerId === myClientId);
+    if (mySnakeIdx < 0) mySnakeIdx = 0;
+
+    foods = state.foods || [];
+
+    // Powerups
+    powerups = (state.powerups || []).map(p => ({
+      x: p.x, y: p.y, type: { id:'remote', emoji:p.emoji, color:p.color, glow:p.glow, duration:0, label:'' },
+      spawnTime: Date.now(), lifetime: 99999,
+    }));
+
+    // Particles (merge)
+    if (state.particles && state.particles.length > particles.length) {
+      particles = state.particles;
+    }
+    if (state.floatingTexts && state.floatingTexts.length > floatingTexts.length) {
+      floatingTexts = state.floatingTexts;
+    }
+  }
+
+  function leaveRoom() {
+    broadcast({ type: 'player-leave', name: playerName });
+    setTimeout(() => {
+      destroyGoEasy();
+      onlinePlayers = [];
+      showScreen('menu');
+    }, 300);
+  }
+
+  function destroyGoEasy() {
+    if (goeasy) {
+      try { goeasy.pubsub.unsubscribe(channel); } catch {}
+      try { goeasy.disconnect(); } catch {}
+    }
+    goeasy = null; channel = ''; isHost = false;
+  }
+
+  // Cleanup on page unload
+  window.addEventListener('beforeunload', () => {
+    if (goeasy) { broadcast({ type: 'player-leave', name: playerName }); destroyGoEasy(); }
+  });
+
+  speed = SPEEDS.normal;
+  init();
+})();
+</script>
+</body>
+</html>
