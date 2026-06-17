@@ -204,18 +204,55 @@
   .bg-particle { position: absolute; border-radius: 50%; opacity: 0.1; animation: float-up linear infinite; }
   @keyframes float-up { 0%{transform:translateY(100vh) scale(0);opacity:0}10%{opacity:0.1}90%{opacity:0.1}100%{transform:translateY(-10vh) scale(1);opacity:0} }
 
-  /* Mobile */
-  #mobile-controls { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 6; display: none; }
-  @media (max-width: 768px) and (pointer: coarse) { #mobile-controls { display: grid; } }
-  #mobile-controls { grid-template-columns: 52px 52px 52px; grid-template-rows: 52px 52px; gap: 4px; }
+  /* Mobile controls */
+  #mobile-controls {
+    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 6;
+    display: none;
+  }
+  @media (max-width: 768px) and (pointer: coarse) {
+    #mobile-controls { display: grid; }
+  }
+  #mobile-controls {
+    grid-template-columns: 76px 76px 76px 56px;
+    grid-template-rows: 76px 76px 76px;
+    gap: 8px;
+    pointer-events: none;
+  }
   .ctrl-btn {
-    width: 52px; height: 52px; border-radius: 11px;
-    border: 1.5px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05);
-    color: rgba(255,255,255,0.45); font-size: 1.2rem;
+    pointer-events: auto;
+    width: 76px; height: 76px; border-radius: 18px;
+    border: 1.5px solid rgba(255,255,255,0.14);
+    background: rgba(20,20,40,0.55);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    color: rgba(255,255,255,0.75); font-size: 1.6rem;
     display: flex; align-items: center; justify-content: center;
     cursor: pointer; -webkit-tap-highlight-color: transparent;
+    transition: transform 0.08s ease, background 0.12s ease, border-color 0.12s ease;
+    user-select: none; -webkit-user-select: none;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.35);
   }
-  .ctrl-btn:active { background: rgba(0,245,160,0.12); border-color: #00f5a0; color: #00f5a0; }
+  .ctrl-btn.pressed, .ctrl-btn:active {
+    background: linear-gradient(135deg, rgba(0,245,160,0.25), rgba(0,217,245,0.2));
+    border-color: #00f5a0; color: #00f5a0;
+    transform: scale(0.94);
+    box-shadow: 0 0 20px rgba(0,245,160,0.35), 0 4px 14px rgba(0,0,0,0.3);
+  }
+  .ctrl-btn.sprint {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: rgba(255,71,87,0.15); border-color: rgba(255,71,87,0.3);
+    color: #ff6b6b; font-size: 1.4rem;
+    align-self: center;
+  }
+  .ctrl-btn.sprint.pressed, .ctrl-btn.sprint:active {
+    background: rgba(255,71,87,0.35);
+    border-color: #ff4757; color: #fff;
+    box-shadow: 0 0 18px rgba(255,71,87,0.4);
+  }
+  .ctrl-up    { grid-column: 2; grid-row: 1; }
+  .ctrl-left  { grid-column: 1; grid-row: 2; }
+  .ctrl-down  { grid-column: 2; grid-row: 3; }
+  .ctrl-right { grid-column: 3; grid-row: 2; }
+  .ctrl-sprint{ grid-column: 4; grid-row: 2; }
 </style>
 </head>
 <body>
@@ -310,8 +347,11 @@
 
 <!-- Mobile -->
 <div id="mobile-controls">
-  <div></div><button class="ctrl-btn" data-dir="up">▲</button><div></div>
-  <button class="ctrl-btn" data-dir="left">◀</button><button class="ctrl-btn" data-dir="down">▼</button><button class="ctrl-btn" data-dir="right">▶</button>
+  <button class="ctrl-btn ctrl-up"    data-dir="up">▲</button>
+  <button class="ctrl-btn ctrl-left"  data-dir="left">◀</button>
+  <button class="ctrl-btn ctrl-down"  data-dir="down">▼</button>
+  <button class="ctrl-btn ctrl-right" data-dir="right">▶</button>
+  <button class="ctrl-btn ctrl-sprint sprint" data-action="sprint" aria-label="加速">⚡</button>
 </div>
 
 <script>
@@ -357,7 +397,7 @@
   let goeasy = null, channel = '', isHost = false, myClientId = '';
   let onlinePlayers = [];   // [{id, name, colorIdx}]
   let onlineState = null;   // Latest state from host
-  let broadcastTimer = 0;
+  let broadcastTimer = 0, roomInfoTimer = 0;
   const BROADCAST_INTERVAL = 66; // ~15Hz
 
   // ===== Init =====
@@ -374,8 +414,11 @@
 
   function resize() {
     const dpr = window.devicePixelRatio || 1;
+    // Detect touch + mobile viewport → reserve vertical space for the D-pad (3 rows * 76px + gaps + padding ≈ 320px)
+    const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px) and (pointer: coarse)').matches;
+    const bottomReserve = isMobile ? 320 : 24;
     const maxW = Math.min(window.innerWidth - 24, 700);
-    const maxH = Math.min(window.innerHeight - 24, 700);
+    const maxH = Math.min(window.innerHeight - 24 - bottomReserve, 700);
     const size = Math.min(maxW, maxH);
     cellSize = Math.floor(size / GRID);
     W = cellSize * GRID; H = cellSize * GRID;
@@ -437,6 +480,7 @@
     score = 0; combo = 0; comboTimer = 0; maxCombo = 0; kills = 0;
     lastMilestone = 0; foodEatCount = 0; energy = 100; boosting = false;
     moveTimer = 0; interpProgress = 0; speed = baseSpeed;
+    broadcastTimer = 0; roomInfoTimer = 0;
 
     // Place each player snake at different positions
     const positions = [
@@ -463,9 +507,9 @@
       name, body: [{x,y},{x:x-dx,y},{x:x-dx*2,y}],
       dir:{x:dx,y:dy}, nextDir:{x:dx,y:dy},
       bodyColor: colors.body, headColor: colors.head,
-      score: 0, alive: true, dead: false,
+      score: 0, kills: 0, alive: true, dead: false,
       respawnTimer: 0, isAI: false, playerId: null,
-      moveTimer: 0,
+      moveTimer: 0, combo: 0, maxCombo: 0,
     };
   }
 
@@ -498,19 +542,19 @@
         postSnakeMove(sn, idx, (nx+cols)%cols, (ny+rows)%rows);
         return;
       }
-      return killSnake(sn, idx);
+      return killSnake(sn, idx, idx); // self-kill (wall)
     }
     // Self collision
     for (const seg of sn.body) {
-      if (seg.x === nx && seg.y === ny) return killSnake(sn, idx);
+      if (seg.x === nx && seg.y === ny) return killSnake(sn, idx, idx); // self-kill
     }
     // Other snake collision
     for (let j = 0; j < snakes.length; j++) {
       if (j === idx || snakes[j].dead) continue;
       for (const seg of snakes[j].body) {
         if (seg.x === nx && seg.y === ny) {
-          if (hasShield) { killSnake(snakes[j], j); }
-          else return killSnake(sn, idx);
+          if (hasShield) { killSnake(snakes[j], j, idx); } // I killed them
+          else return killSnake(sn, idx, j); // they killed me
         }
       }
     }
@@ -578,10 +622,21 @@
     }
   }
 
-  function killSnake(sn, idx) {
+  function killSnake(sn, idx, killerIdx) {
     if (sn.dead) return;
     sn.dead = true; sn.alive = false; sn.respawnTimer = 20; // ~3 seconds at 6 ticks/s
     const isMe = (idx === mySnakeIdx);
+
+    // Credit kill to killer (not self-kill, not self-hit-other with shield)
+    if (killerIdx !== undefined && killerIdx !== idx) {
+      const killer = snakes[killerIdx];
+      if (killer) killer.kills = (killer.kills || 0) + 1;
+      // Track local player's kills
+      if (killerIdx === mySnakeIdx) {
+        kills++;
+        addFloatingText(sn.body[0].x, sn.body[0].y, `💀 +1 击杀`, '#ff4757', 1.2);
+      }
+    }
 
     // Death particles
     for (const seg of sn.body) {
@@ -594,28 +649,37 @@
       }
     }
 
-    // Count kills for player
     if (isMe) {
       shakeTimer = 0.5; shakeIntensity = 14;
       const isRecord = score > best;
       if (isRecord) { best = score; localStorage.setItem('snake-best3', best); }
-      // Check if game over (online: score target)
+      // Local mode: end game after a short delay
       if (mode === 'local') {
         setTimeout(() => {
-          gameState = 'dead';
-          showGameOver(isRecord);
+          if (gameState !== 'dead') {
+            gameState = 'dead';
+            showGameOver(isRecord);
+          }
         }, 900);
+      } else {
+        // Online: show a death notice, wait for host to end the game
+        addFloatingText(sn.body[0].x, sn.body[0].y, '💀 阵亡! 等待对局结束...', '#ff4757', 1.5);
       }
-    }
-    // If another snake killed our player, credit them
-    if (isMe && mode === 'online') {
-      addFloatingText(sn.body[0].x, sn.body[0].y, '💀 阵亡!', '#ff4757', 1.5);
     }
   }
 
   function respawnSnake(sn, idx) {
-    const pos = randomFree();
-    const dx = Math.random() > 0.5 ? 1 : -1;
+    // Find a safe 3-cell spawn location (head + 2 tail segments must be free)
+    const occ = getOccupied();
+    let pos = null, dx = 1;
+    for (let attempt = 0; attempt < 200; attempt++) {
+      const px = Math.floor(Math.random()*cols);
+      const py = Math.floor(Math.random()*rows);
+      dx = Math.random() > 0.5 ? 1 : -1;
+      const s1 = `${px},${py}`, s2 = `${px-dx},${py}`, s3 = `${px-dx*2},${py}`;
+      if (!occ.has(s1) && !occ.has(s2) && !occ.has(s3)) { pos = { x: px, y: py }; break; }
+    }
+    if (!pos) pos = randomFree(occ); // Fallback (may overlap)
     sn.body = [{x:pos.x,y:pos.y},{x:pos.x-dx,y:pos.y},{x:pos.x-dx*2,y:pos.y}];
     sn.dir = {x:dx,y:0}; sn.nextDir = {x:dx,y:0};
     sn.dead = false; sn.alive = true;
@@ -849,6 +913,37 @@
       if (mode === 'local' || isHost) {
         // Host/local: run game logic
         const me = snakes[mySnakeIdx];
+
+        // Always tick AI (local) or remote players (online host), regardless of whether I'm alive
+        const dtMs = dt * 1000;
+        if (mode === 'local') {
+          for (let i = 0; i < snakes.length; i++) {
+            if (i === mySnakeIdx || !snakes[i].isAI) continue;
+            const ai = snakes[i];
+            if (ai.dead) {
+              ai.respawnTimer -= 1;
+              if (ai.respawnTimer <= 0) respawnSnake(ai, i);
+              continue;
+            }
+            ai.moveTimer += dtMs;
+            const aiLenF = Math.min(2, 1+(ai.body.length-3)*0.03);
+            const aiEffS = baseSpeed * aiLenF;
+            if (ai.moveTimer >= aiEffS) { ai.moveTimer -= aiEffS; tickAI(ai); tickSnake(ai, i); }
+          }
+        } else {
+          // Online host: tick remote human players
+          for (let i = 0; i < snakes.length; i++) {
+            if (i === mySnakeIdx || snakes[i].isAI) continue;
+            const sn = snakes[i];
+            if (sn.dead) { sn.respawnTimer -= 1; if (sn.respawnTimer <= 0) respawnSnake(sn, i); continue; }
+            sn.moveTimer += dtMs;
+            const lenF = Math.min(2, 1+(sn.body.length-3)*0.03);
+            const effS = baseSpeed * lenF;
+            if (sn.moveTimer >= effS) { sn.moveTimer -= effS; tickSnake(sn, i); }
+          }
+        }
+
+        // Tick local player
         if (me && !me.dead) {
           const lenFactor = Math.min(2, 1 + (me.body.length-3)*0.03);
           const lenSpeed = speed * lenFactor;
@@ -856,71 +951,61 @@
           if (boosting && energy > 0) energy = Math.max(0, energy-dt*35);
           else energy = Math.min(100, energy+dt*15);
 
-          moveTimer += dt*1000;
+          moveTimer += dtMs;
           interpProgress = Math.min(moveTimer/effSpeed, 1);
           if (moveTimer >= effSpeed) {
             moveTimer -= effSpeed; interpProgress = 0;
             // Tick player snake
             me.nextDir = pendingDir || me.nextDir; pendingDir = null;
             tickSnake(me, mySnakeIdx);
-
-            // Tick AI (local mode only)
-            if (mode === 'local') {
-              for (let i = 0; i < snakes.length; i++) {
-                if (i === mySnakeIdx || !snakes[i].isAI) continue;
-                const ai = snakes[i];
-                ai.moveTimer += dt*1000;
-                const aiLenF = Math.min(2, 1+(ai.body.length-3)*0.03);
-                const aiEffS = baseSpeed * aiLenF;
-                if (ai.moveTimer >= aiEffS) { ai.moveTimer -= aiEffS; tickAI(ai); tickSnake(ai, i); }
-              }
-            } else {
-              // Online: tick remote player snakes (they sent their directions)
-              for (let i = 0; i < snakes.length; i++) {
-                if (i === mySnakeIdx) continue;
-                const sn = snakes[i];
-                if (sn.isAI) continue; // shouldn't happen in online
-                sn.moveTimer += dt*1000;
-                const aiLenF = Math.min(2, 1+(sn.body.length-3)*0.03);
-                const aiEffS = baseSpeed * aiLenF;
-                if (sn.moveTimer >= aiEffS) { sn.moveTimer -= aiEffS; tickSnake(sn, i); }
-              }
-            }
           }
-
-          // Update buffs
-          if (mode === 'local' || isHost) updateBuffs();
-
-          // Combo decay
-          if (comboTimer > 0) { comboTimer -= dt; if (comboTimer <= 0) combo = 0; }
-          const ce = document.getElementById('hud-combo');
-          if (combo >= 2) { ce.textContent = `🔥 连击 x${combo}`; ce.classList.add('show'); }
-          else ce.classList.remove('show');
-
-          if (powerups.length < 2 && Math.random() < dt*0.08) spawnPowerup();
 
           document.getElementById('energy-fill').style.width = energy+'%';
           document.getElementById('speed-label').textContent = `🏃 ${Math.round(100/lenFactor)}%`;
         }
 
+        // Update buffs
+        updateBuffs();
+
+        // Combo decay
+        if (comboTimer > 0) { comboTimer -= dt; if (comboTimer <= 0) combo = 0; }
+        const ce = document.getElementById('hud-combo');
+        if (combo >= 2) { ce.textContent = `🔥 连击 x${combo}`; ce.classList.add('show'); }
+        else ce.classList.remove('show');
+
+        if (powerups.length < 2 && Math.random() < dt*0.08) spawnPowerup();
+
         // Broadcast state (online host)
         if (mode === 'online' && isHost) {
-          broadcastTimer += dt*1000;
+          broadcastTimer += dtMs;
           if (broadcastTimer >= BROADCAST_INTERVAL) {
             broadcastTimer -= BROADCAST_INTERVAL;
             broadcastGameState();
           }
+          // Periodically broadcast room-info for late-joining guests
+          roomInfoTimer += dtMs;
+          if (roomInfoTimer >= 2000) {
+            roomInfoTimer -= 2000;
+            broadcast({ type: 'room-info', players: onlinePlayers });
+          }
         }
 
-        // Check online win condition
-        if (mode === 'online' && scoreTarget > 0) {
-          for (const sn of snakes) {
-            if (sn.score >= scoreTarget) {
-              gameState = 'dead';
-              showGameOver(sn.score >= score && sn !== snakes[mySnakeIdx] ? false : score > best);
-              broadcastGameOver();
-              break;
+        // Online win condition: score target reached or all dead (after respawn disabled)
+        if (mode === 'online' && isHost) {
+          let gameOverReason = null;
+          if (scoreTarget > 0) {
+            for (const sn of snakes) {
+              if (!sn.dead && sn.score >= scoreTarget) {
+                gameOverReason = { type: 'score', winnerId: sn.playerId, winnerName: sn.name };
+                break;
+              }
             }
+          }
+          if (gameOverReason) {
+            gameState = 'dead';
+            broadcast({ type: 'game-over', reason: gameOverReason, scores: snakes.map(s => ({name:s.name, score:s.score, kills:s.kills})) });
+            const myScore = me ? me.score : 0;
+            showGameOver(gameOverReason.winnerId === myClientId && myScore > best);
           }
         }
       } else {
@@ -942,10 +1027,6 @@
               me.body.pop();
             }
           }
-          // Energy
-          if (boosting && energy > 0) energy = Math.max(0, energy-dt*35);
-          else energy = Math.min(100, energy+dt*15);
-          document.getElementById('energy-fill').style.width = energy+'%';
           document.getElementById('speed-label').textContent = `🏃 ${Math.round(100/lenFactor)}%`;
         }
       }
@@ -984,7 +1065,7 @@
           case 'ArrowDown': case 's': case 'S': setDirection({x:0,y:1}); e.preventDefault(); break;
           case 'ArrowLeft': case 'a': case 'A': setDirection({x:-1,y:0}); e.preventDefault(); break;
           case 'ArrowRight': case 'd': case 'D': setDirection({x:1,y:0}); e.preventDefault(); break;
-          case 'Shift': boosting=true; e.preventDefault(); break;
+          case 'Shift': if (mode === 'local') boosting = true; e.preventDefault(); break;
           case ' ': if(mode==='local'){togglePause();} e.preventDefault(); break;
         }
       } else if (gameState==='paused' && e.key===' ') { togglePause(); e.preventDefault(); }
@@ -1028,18 +1109,49 @@
     document.getElementById('btn-resume').addEventListener('click', togglePause);
     document.getElementById('hud-pause').addEventListener('click', () => { if(mode==='local') togglePause(); });
 
-    // Mobile controls
-    document.querySelectorAll('.ctrl-btn').forEach(btn => {
-      btn.addEventListener('touchstart', e => {
+    // Mobile controls: D-pad + sprint, use pointer events for reliable press/release
+    const ctrlBtns = document.querySelectorAll('.ctrl-btn');
+    const haptic = (ms) => { if (navigator.vibrate) { try { navigator.vibrate(ms); } catch {} } };
+
+    ctrlBtns.forEach(btn => {
+      const onPress = (e) => {
         e.preventDefault();
-        switch(btn.dataset.dir) {
-          case 'up': setDirection({x:0,y:-1}); break;
-          case 'down': setDirection({x:0,y:1}); break;
-          case 'left': setDirection({x:-1,y:0}); break;
-          case 'right': setDirection({x:1,y:0}); break;
+        btn.classList.add('pressed');
+        if (btn.dataset.dir) {
+          haptic(8);
+          switch(btn.dataset.dir) {
+            case 'up':    setDirection({x:0,y:-1}); break;
+            case 'down':  setDirection({x:0,y:1}); break;
+            case 'left':  setDirection({x:-1,y:0}); break;
+            case 'right': setDirection({x:1,y:0}); break;
+          }
+        } else if (btn.dataset.action === 'sprint') {
+          haptic(12);
+          boosting = true;
         }
-      });
+      };
+      const onRelease = (e) => {
+        btn.classList.remove('pressed');
+        if (btn.dataset.action === 'sprint') boosting = false;
+      };
+      // Use pointer events (works for touch + mouse), fallback to touch/mouse
+      if (window.PointerEvent) {
+        btn.addEventListener('pointerdown', onPress, { passive: false });
+        btn.addEventListener('pointerup', onRelease);
+        btn.addEventListener('pointercancel', onRelease);
+        btn.addEventListener('pointerleave', onRelease);
+      } else {
+        btn.addEventListener('touchstart', onPress, { passive: false });
+        btn.addEventListener('touchend', onRelease);
+        btn.addEventListener('touchcancel', onRelease);
+        btn.addEventListener('mousedown', onPress);
+        btn.addEventListener('mouseup', onRelease);
+        btn.addEventListener('mouseleave', onRelease);
+      }
     });
+
+    // Prevent default touch behavior on the whole controls area
+    document.getElementById('mobile-controls').addEventListener('touchmove', e => e.preventDefault(), { passive: false });
 
     // Touch swipe
     let touchStart=null, lastTap=0;
@@ -1072,14 +1184,23 @@
   }
 
   function showGameOver(isRecord) {
-    document.getElementById('final-score').textContent = score;
-    document.getElementById('stat-length').textContent = snakes[mySnakeIdx] ? snakes[mySnakeIdx].body.length : 0;
-    document.getElementById('stat-kills').textContent = kills;
-    document.getElementById('stat-combo').textContent = maxCombo;
+    // Use snake's actual score/kills in online mode
+    const me = snakes[mySnakeIdx];
+    const finalScore = (mode === 'online' && me) ? me.score : score;
+    const finalKills = (mode === 'online' && me) ? (me.kills || 0) : kills;
+    const finalCombo = (mode === 'online' && me) ? (me.maxCombo || maxCombo) : maxCombo;
+
+    document.getElementById('final-score').textContent = finalScore;
+    document.getElementById('stat-length').textContent = me ? me.body.length : 0;
+    document.getElementById('stat-kills').textContent = finalKills;
+    document.getElementById('stat-combo').textContent = finalCombo;
     const rec = document.getElementById('new-record');
-    if (isRecord && score > 0) rec.classList.remove('hidden'); else rec.classList.add('hidden');
+    if (isRecord && finalScore > 0) rec.classList.remove('hidden'); else rec.classList.add('hidden');
     document.getElementById('btn-back-lobby').classList.toggle('hidden', mode!=='online');
-    document.getElementById('gameover-title').textContent = mode==='online' ? '对局结束' : '游戏结束';
+    // Title: online game-over handler sets it to 'you won'/'X won'; local always 'game over'
+    if (mode !== 'online') {
+      document.getElementById('gameover-title').textContent = '游戏结束';
+    }
     showScreen('gameover');
   }
 
@@ -1090,15 +1211,22 @@
 
   function updateScoreboard() {
     if (mode !== 'online' || snakes.length <= 1) { document.getElementById('scoreboard').innerHTML = ''; return; }
-    const sorted = snakes.map((s,i) => ({name:s.name, score:s.score, color:s.bodyColor, me:i===mySnakeIdx})).sort((a,b)=>b.score-a.score);
+    const sorted = snakes.map((s,i) => ({name:s.name, score:s.score, kills:s.kills||0, color:s.bodyColor, me:i===mySnakeIdx})).sort((a,b)=>b.score-a.score);
     let html = '';
     for (const s of sorted) {
-      html += `<div class="sb-row${s.me?' me':''}"><div class="sb-dot" style="background:${s.color}"></div><div class="sb-name">${s.name}</div><div class="sb-score">${s.score}</div></div>`;
+      html += `<div class="sb-row${s.me?' me':''}"><div class="sb-dot" style="background:${s.color}"></div><div class="sb-name">${s.name}</div><div class="sb-score">${s.score}${s.kills>0?` · 💀${s.kills}`:''}</div></div>`;
     }
     document.getElementById('scoreboard').innerHTML = html;
-    // Update my score display
-    if (snakes[mySnakeIdx]) {
-      document.getElementById('hud-score').textContent = snakes[mySnakeIdx].score;
+    // Sync my score/combo/kills into HUD (especially for online clients)
+    const me = snakes[mySnakeIdx];
+    if (me) {
+      document.getElementById('hud-score').textContent = me.score;
+      if (mode === 'online') {
+        const ce = document.getElementById('hud-combo');
+        const c = me.combo || 0;
+        if (c >= 2) { ce.textContent = `🔥 连击 x${c}`; ce.classList.add('show'); }
+        else ce.classList.remove('show');
+      }
     }
   }
 
@@ -1272,8 +1400,9 @@
         document.getElementById('waiting-text').style.display = 'block';
         document.getElementById('waiting-text').textContent = '等待房主开始游戏...';
         document.getElementById('btn-leave-room').onclick = leaveRoom;
-        // Announce join
+        // Announce join and request current room info
         broadcast({ type: 'player-join', name: playerName, colorIdx: onlinePlayers.length });
+        broadcast({ type: 'request-room-info' });
       } catch (err) {
         document.getElementById('lobby-error').textContent = '加入失败';
       }
@@ -1304,9 +1433,18 @@
     switch (data.type) {
       case 'player-join': {
         if (isHost && onlinePlayers.length < 4) {
+          // Prevent duplicate join (same client reconnecting)
+          if (onlinePlayers.some(p => p.id === data.from)) break;
           onlinePlayers.push({ id: data.from, name: data.name, colorIdx: onlinePlayers.length });
           renderPlayerList();
           // Broadcast updated player list
+          broadcast({ type: 'room-info', players: onlinePlayers });
+        }
+        break;
+      }
+      case 'request-room-info': {
+        if (isHost) {
+          // Respond only to the requester
           broadcast({ type: 'room-info', players: onlinePlayers });
         }
         break;
@@ -1349,7 +1487,14 @@
       case 'game-over': {
         if (!isHost) {
           gameState = 'dead';
-          showGameOver(false);
+          // Show winner info
+          const winnerName = data.reason?.winnerName || '未知';
+          const isWinner = data.reason?.winnerId === myClientId;
+          const myScore = snakes[mySnakeIdx] ? snakes[mySnakeIdx].score : 0;
+          const isRecord = isWinner && myScore > best;
+          if (isRecord) { best = myScore; localStorage.setItem('snake-best3', best); }
+          document.getElementById('gameover-title').textContent = isWinner ? '🏆 你赢了!' : `${winnerName} 获胜`;
+          showGameOver(isRecord);
         }
         break;
       }
@@ -1357,8 +1502,18 @@
         if (isHost) {
           onlinePlayers = onlinePlayers.filter(p => p.id !== data.from);
           const sn = snakes.find(s => s.playerId === data.from);
-          if (sn) killSnake(sn, snakes.indexOf(sn));
+          if (sn) {
+            const idx = snakes.indexOf(sn);
+            if (idx >= 0) killSnake(sn, idx, idx); // leaving = self-kill
+          }
           renderPlayerList();
+          // Check if only host remains
+          if (onlinePlayers.length <= 1 && gameState === 'playing') {
+            gameState = 'dead';
+            broadcast({ type: 'game-over', reason: { type: 'abandoned', winnerId: myClientId, winnerName: playerName }, scores: snakes.map(s => ({name:s.name, score:s.score, kills:s.kills})) });
+            const myScore = snakes[mySnakeIdx] ? snakes[mySnakeIdx].score : 0;
+            showGameOver(myScore > best);
+          }
         }
         break;
       }
@@ -1366,10 +1521,15 @@
   }
 
   function broadcastGameState() {
+    // Sync current player's combo/maxCombo into snake before broadcast
+    const me = snakes[mySnakeIdx];
+    if (me) { me.combo = combo; me.maxCombo = maxCombo; }
     const state = {
       snakes: snakes.map(s => ({
         body: s.body, dir: s.dir, bodyColor: s.bodyColor, headColor: s.headColor,
-        name: s.name, score: s.score, dead: s.dead, playerId: s.playerId,
+        name: s.name, score: s.score, kills: s.kills || 0,
+        combo: s.combo || 0, maxCombo: s.maxCombo || 0,
+        dead: s.dead, playerId: s.playerId,
       })),
       foods,
       powerups: powerups.map(p => ({ x:p.x, y:p.y, emoji:p.type.emoji, color:p.type.color, glow:p.type.glow })),
@@ -1384,12 +1544,29 @@
   }
 
   function applyRemoteState(state) {
+    // Don't overwrite local state if game has ended
+    if (gameState === 'dead' || gameState === 'gameover') return;
+
+    // Preserve local pending direction before overwriting
+    const oldMeIdx = mySnakeIdx;
+    const oldMe = snakes[oldMeIdx];
+    const pendingNextDir = oldMe ? { ...oldMe.nextDir } : null;
+    const myPendingDir = pendingDir; // from input handler
+
     // Update snakes
     snakes = state.snakes.map(s => ({
       ...s, nextDir: s.dir, isAI: false, alive: !s.dead, respawnTimer: 0, moveTimer: 0,
     }));
     mySnakeIdx = snakes.findIndex(s => s.playerId === myClientId);
     if (mySnakeIdx < 0) mySnakeIdx = 0;
+
+    // Restore pending direction so client prediction stays responsive
+    const newMe = snakes[mySnakeIdx];
+    if (newMe && myPendingDir) {
+      newMe.nextDir = myPendingDir;
+    } else if (newMe && pendingNextDir) {
+      newMe.nextDir = pendingNextDir;
+    }
 
     foods = state.foods || [];
 
@@ -1405,6 +1582,15 @@
     }
     if (state.floatingTexts && state.floatingTexts.length > floatingTexts.length) {
       floatingTexts = state.floatingTexts;
+    }
+
+    // Sync combo/kills from host for HUD display
+    if (newMe) {
+      combo = newMe.combo || 0;
+      maxCombo = newMe.maxCombo || maxCombo;
+      kills = newMe.kills || 0;
+      // Also update local score display
+      score = newMe.score || 0;
     }
   }
 
