@@ -16,6 +16,7 @@ export interface Snake {
   body: Point[];        // body[0] is head
   dir: Point;           // current direction {x: 0|1|-1, y: 0|1|-1}
   nextDir: Point;       // direction applied on next tick
+  dirQueue: Point[];    // buffered directions (max 2) to prevent fast-key override
   color: { body: string; head: string };
   speed: number;        // move interval (ms)
   moveTimer: number;    // accumulated move time (ms)
@@ -98,6 +99,7 @@ function cloneSnake(s: Snake): Snake {
     body: s.body.map(clonePoint),
     dir: clonePoint(s.dir),
     nextDir: clonePoint(s.nextDir),
+    dirQueue: s.dirQueue.map(clonePoint),
     color: { ...s.color },
   };
 }
@@ -197,6 +199,7 @@ export function createGame(
       body,
       dir: { x: dx, y: 0 },
       nextDir: { x: dx, y: 0 },
+      dirQueue: [],
       color: { ...p.color },
       speed: BASE_SPEEDS[config.speed] ?? BASE_SPEEDS.normal,
       moveTimer: 0,
@@ -235,15 +238,26 @@ export function createGame(
 }
 
 /**
- * 2. setDirection – allow ANY turn, including 180° U-turn
+ * 2. setDirection – classic rules: forbid 180° reverse
+ *    Uses a direction queue (max 2) to prevent fast-key override bugs.
  */
 export function setDirection(snake: Snake, newDir: Point): Snake {
+  // Limit queue length to 2 buffered directions
+  if (snake.dirQueue.length >= 2) return snake;
+
+  // Compare against the last queued direction, or current dir if queue is empty
+  const current = snake.dirQueue.length > 0
+    ? snake.dirQueue[snake.dirQueue.length - 1]
+    : snake.dir;
+
+  // Forbid 180° reverse
+  if (newDir.x === -current.x && newDir.y === -current.y) return snake;
+  // Ignore same direction
+  if (newDir.x === current.x && newDir.y === current.y) return snake;
+
   return {
     ...snake,
-    body: snake.body.map(clonePoint),
-    dir: clonePoint(snake.dir),
-    nextDir: clonePoint(newDir),
-    color: { ...snake.color },
+    dirQueue: [...snake.dirQueue, { x: newDir.x, y: newDir.y }],
   };
 }
 
@@ -325,7 +339,7 @@ export function tickGame(state: GameState, dt: number): GameState {
   if (foodCount < 5) {
     const needed = 5 + Math.floor(Math.random() * 4) - foodCount;
     for (let i = 0; i < needed; i++) {
-      s = spawnFood(s);
+      generateFood(s);
     }
   }
 
@@ -349,14 +363,18 @@ export function tickGame(state: GameState, dt: number): GameState {
 }
 
 /**
- * 4. tickSnake – execute a single snake's move
+ * 4. tickSnake – execute a single snake's move (classic rules)
  */
-export function tickSnake(state: GameState, snakeIndex: number): GameState {
-  const s = cloneState(state);
+function tickSnake(s: GameState, snakeIndex: number): GameState {
   const sn = s.snakes[snakeIndex];
   if (!sn || !sn.alive) return s;
 
   const { gridW, gridH } = s.config;
+
+  // Dequeue buffered direction if available
+  if (sn.dirQueue.length > 0) {
+    sn.nextDir = sn.dirQueue.shift()!;
+  }
 
   // Apply nextDir → dir
   sn.dir = clonePoint(sn.nextDir);
@@ -367,33 +385,15 @@ export function tickSnake(state: GameState, snakeIndex: number): GameState {
 
   // --- Collision detection ---
 
-  // 1. Wall collision
+  // 1. Wall collision → die (no wrap-around)
   if (nx < 0 || nx >= gridW || ny < 0 || ny >= gridH) {
-    if (sn.shield) {
-      // Wrap around
-      const wrappedX = ((nx % gridW) + gridW) % gridW;
-      const wrappedY = ((ny % gridH) + gridH) % gridH;
-      sn.body.unshift({ x: wrappedX, y: wrappedY });
-      // Eat check + tail pop handled below
-      return postMove(s, snakeIndex, wrappedX, wrappedY);
-    }
-    // Die
     return killSnake(s, snakeIndex, snakeIndex);
   }
 
-  // 2. Self collision
-  for (let i = 0; i < sn.body.length; i++) {
+  // 2. Self collision (tail is excluded — it vacates this step)
+  for (let i = 0; i < sn.body.length - 1; i++) {
     const seg = sn.body[i];
     if (seg.x === nx && seg.y === ny) {
-      if (i === 1) {
-        // U-turn detected: new head == body[1]
-        // Reverse the body array and set dir to the opposite direction
-        sn.body.reverse();
-        sn.dir = { x: -sn.dir.x, y: -sn.dir.y };
-        sn.nextDir = clonePoint(sn.dir);
-        return s;
-      }
-      // Other self-collision → death
       return killSnake(s, snakeIndex, snakeIndex);
     }
   }
@@ -483,11 +483,10 @@ function postMove(
  * Kill a snake, credit the killer
  */
 function killSnake(
-  state: GameState,
+  s: GameState,
   victimIndex: number,
   killerIndex: number,
 ): GameState {
-  const s = cloneState(state);
   const victim = s.snakes[victimIndex];
   if (!victim || !victim.alive) return s;
 
@@ -631,16 +630,11 @@ export function tickAI(state: GameState, snakeIndex: number): Point {
 /**
  * 6. spawnFood – add a food item to the state
  */
-export function spawnFood(state: GameState): GameState {
-  const s = cloneState(state);
+function generateFood(s: GameState): void {
+  if (s.foods.length >= 8) return;
   const { gridW, gridH } = s.config;
-
-  // Don't exceed 8 foods
-  if (s.foods.length >= 8) return s;
-
   const pos = randomFreeCell(gridW, gridH, s.snakes, s.foods);
 
-  // Random food type
   const roll = Math.random();
   let type: Food['type'];
   let value: number;
@@ -660,6 +654,11 @@ export function spawnFood(state: GameState): GameState {
   }
 
   s.foods.push({ pos, type, value });
+}
+
+export function spawnFood(state: GameState): GameState {
+  const s = cloneState(state);
+  generateFood(s);
   return s;
 }
 
@@ -737,6 +736,7 @@ export function respawnSnake(
   ];
   sn.dir = { x: dx, y: 0 };
   sn.nextDir = { x: dx, y: 0 };
+  sn.dirQueue = [];
   sn.alive = true;
   sn.respawnTimer = 0;
   sn.shield = false;
