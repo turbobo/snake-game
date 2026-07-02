@@ -85,7 +85,7 @@ export const SNAKE_COLORS: { body: string; head: string }[] = [
 export const ENERGY_MAX = 100;
 export const ENERGY_DRAIN = 35;   // per second
 export const ENERGY_REGEN = 15;   // per second
-export const RESPAWN_TICKS = 60;  // ~3 s
+export const RESPAWN_MS = 3000;
 
 // -------------------- Helpers (internal) --------------------
 
@@ -276,9 +276,12 @@ export function tickGame(state: GameState, dt: number): GameState {
     // Dead snake: handle respawn countdown
     if (!sn.alive) {
       if (sn.respawnTimer > 0) {
-        sn.respawnTimer -= 1;
+        sn.respawnTimer -= dtMs;
         if (sn.respawnTimer <= 0) {
-          s = respawnSnake(s, i);
+          sn.respawnTimer = 0;
+          if (sn.isAI) {
+            s = respawnSnake(s, i);
+          }
         }
       }
       continue;
@@ -491,7 +494,7 @@ function killSnake(
   if (!victim || !victim.alive) return s;
 
   victim.alive = false;
-  victim.respawnTimer = RESPAWN_TICKS;
+  victim.respawnTimer = RESPAWN_MS;
 
   // Credit kill
   if (killerIndex !== victimIndex) {

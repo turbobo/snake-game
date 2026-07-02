@@ -141,21 +141,26 @@ export default function Home() {
           setGame(state);
           if (state.gameOver) {
             setScreen('end');
+          } else {
+            setScreen('game');
           }
         }
         break;
       }
       case 'direction': {
-        // Host receives direction from guest
+        // Host receives direction/boost from guest
         if (peerRef.current?.getIsHost() && gameRef.current) {
-          const { dir, playerId } = msg.payload || {};
-          if (dir) {
-            const snakeIdx = gameRef.current.snakes.findIndex(
-              s => !s.isAI && s.name !== (myName || '玩家')
-            );
+          const { dir, boost, playerName } = msg.payload || {};
+          if (playerName) {
+            const snakeIdx = gameRef.current.snakes.findIndex(s => s.name === playerName);
             if (snakeIdx >= 0) {
-              const updatedSnake = setDirection(gameRef.current.snakes[snakeIdx], dir);
-              gameRef.current.snakes[snakeIdx] = updatedSnake;
+              if (dir) {
+                const updatedSnake = setDirection(gameRef.current.snakes[snakeIdx], dir);
+                gameRef.current.snakes[snakeIdx] = updatedSnake;
+              }
+              if (boost !== undefined) {
+                gameRef.current.snakes[snakeIdx].boosting = boost;
+              }
             }
           }
         }
@@ -199,8 +204,10 @@ export default function Home() {
       const dtSec = dtMs / 1000;
 
       if (!paused && gameRef.current && !gameRef.current.gameOver) {
-        // Tick game
-        gameRef.current = tickGame(gameRef.current, dtSec);
+        // Only host/local ticks the game; guest receives state from host
+        if (mode !== 'online' || isHost) {
+          gameRef.current = tickGame(gameRef.current, dtSec);
+        }
 
         // Online host broadcasts ~15Hz
         if (mode === 'online' && isHost) {
@@ -279,6 +286,12 @@ export default function Home() {
           if (gameRef.current.snakes[myIndex].alive) {
             gameRef.current.snakes[myIndex].boosting = true;
             sound.playBoost();
+            if (mode === 'online' && !isHost) {
+              peerRef.current?.broadcast({
+                type: 'direction',
+                payload: { boost: true, playerName: myName || '玩家' },
+              });
+            }
           }
           e.preventDefault();
           break;
@@ -294,7 +307,7 @@ export default function Home() {
         if (mode === 'online' && !isHost) {
           peerRef.current?.broadcast({
             type: 'direction',
-            payload: { dir, playerId: peerRef.current.getClientId() },
+            payload: { dir, playerName: myName || '玩家' },
           });
         }
       }
@@ -306,6 +319,12 @@ export default function Home() {
         const myIndex = gameRef.current.snakes.findIndex(s => !s.isAI);
         if (myIndex >= 0 && gameRef.current.snakes[myIndex]) {
           gameRef.current.snakes[myIndex].boosting = false;
+          if (mode === 'online' && !isHost) {
+            peerRef.current?.broadcast({
+              type: 'direction',
+              payload: { boost: false, playerName: myName || '玩家' },
+            });
+          }
         }
       }
     };
@@ -335,6 +354,12 @@ export default function Home() {
         if (myIndex >= 0) {
           gameRef.current.snakes[myIndex].boosting = true;
           sound.playBoost();
+          if (mode === 'online' && !isHost) {
+            peerRef.current?.broadcast({
+              type: 'direction',
+              payload: { boost: true, playerName: myName || '玩家' },
+            });
+          }
         }
       }
     };
@@ -344,6 +369,12 @@ export default function Home() {
         const myIndex = gameRef.current.snakes.findIndex(s => !s.isAI);
         if (myIndex >= 0) {
           gameRef.current.snakes[myIndex].boosting = false;
+          if (mode === 'online' && !isHost) {
+            peerRef.current?.broadcast({
+              type: 'direction',
+              payload: { boost: false, playerName: myName || '玩家' },
+            });
+          }
         }
       }
 
@@ -369,7 +400,7 @@ export default function Home() {
             if (mode === 'online' && !isHost) {
               peerRef.current?.broadcast({
                 type: 'direction',
-                payload: { dir, playerId: peerRef.current.getClientId() },
+                payload: { dir, playerName: myName || '玩家' },
               });
             }
           }
